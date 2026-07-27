@@ -82,5 +82,6 @@ env/
 # Temp helpers
 _*.py
 _*.json
+docs/_*.md
 *.log
 **/tmp/
