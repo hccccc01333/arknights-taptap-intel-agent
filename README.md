@@ -96,15 +96,6 @@ python scripts/refresh_demo.py
 
 然后用浏览器打开 `05展示页/index.html`。
 
-### 密钥（可选）
-
-复制示例环境文件，**不要把真实密钥提交进仓库**：
-
-```bash
-# TapTap X-UA 等：见 01爬虫/config.example.env
-# 标注 / 综合：export DEEPSEEK_API_KEY=...
-```
-
 ---
 
 ## 使用说明
