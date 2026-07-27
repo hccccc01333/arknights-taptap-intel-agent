@@ -1,0 +1,86 @@
+# OS / Python
+.DS_Store
+Thumbs.db
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+**/.env
+*.pem
+*.key
+
+# Editor / local agents
+.idea/
+.vscode/
+*.swp
+.cursor/
+.claude/
+
+# Local drafts (not for public)
+11提示词工程/
+**/原始提示词.md
+**/提示词工程复盘.md
+**/原始数据处理提示词.md
+
+# Crawl / LLM dumps
+**/raw/
+**/raw_llm/
+**/checkpoint*.json
+01爬虫/runs/
+02数据/raw/
+**/run_logs/
+
+# Intermediate annotation churn
+03标注结果/shards/
+03标注结果/annotations.csv
+03标注结果/annotations_v1_1.csv
+03标注结果/annotations_v1_2.csv
+03标注结果/annotations_v1_3.csv
+03标注结果/v1_2_reannotate_ids.txt
+02数据/compare_v1_1_v1_2.py
+02数据/compare_v1_2_v1_3.py
+02数据/compare_v1_3_v1_4.py
+02数据/diag_sentiment_mislabels.py
+02数据/pick_v1_2_reannotate_ids.py
+02数据/build_v1_1_compare_report.py
+02数据/watch_shards_then_merge.py
+02数据/build_sample_report.py
+
+# Disposable probes / prototypes
+10分析实验室/_probe_events.py
+10分析实验室/_probe_events2.py
+05展示页/ui_prototype.html
+
+# Extra timestamped report spam (keep *_latest and final skill reports)
+03标注结果/reports/annotate_run_*.md
+03标注结果/reports/annotate_sample_*.md
+03标注结果/reports/annotate_v1_1_*.md
+03标注结果/reports/annotate_qc_*.md
+03标注结果/reports/method_v1_3_*.md
+03标注结果/reports/sentiment_*.md
+10分析实验室/reports/model_eval_2026*.md
+10分析实验室/reports/anomaly_diagnosis_2026*.md
+10分析实验室/reports/event_impact_2026*.md
+06对照_B站/reports/annotate_bili_2026*.md
+06对照_B站/reports/crawl_bili_2026*.md
+07对照_抖音/reports/annotate_douyin_2026*.md
+07对照_抖音/reports/crawl_douyin_2026*.md
+08对照_微博/reports/annotate_weibo_2026*.md
+08对照_微博/reports/crawl_weibo_2026*.md
+02数据/reports/crawl_qc_*.md
+02数据/reports/preprocess_qc_*.md
+02数据/run_logs/
+02数据/figures/preprocess_*_2026*.png
+
+# Temp helpers
+_*.py
+_*.json
+*.log
+**/tmp/

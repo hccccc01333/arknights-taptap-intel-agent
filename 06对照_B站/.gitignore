@@ -1,0 +1,8 @@
+.env
+*.cookie
+cookies.txt
+__pycache__/
+*.pyc
+raw/*.json
+run_logs/*.log
+checkpoint*.json

@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-07-24T10:45:57+08:00",
+  "eval_mode": "proxy_star_weak_gold",
+  "n_gold": 0,
+  "n_eval": 200,
+  "gold_note": "PROXY：人工金标 n=0；以星级映射为弱金标，held-out n=200 (seed=42)。金标源=qc_blind_to_label.xlsx；已填情绪 0 / 盲标表 100",
+  "gold_path": "03标注结果/qc/qc_blind_to_label.xlsx",
+  "model_source": "annotations_v1_4.csv (+ qc_with_model 若有)",
+  "is_proxy": true,
+  "sentiment": {
+    "llm": {
+      "n": 200,
+      "accuracy": 0.805,
+      "macro_f1": 0.793737,
+      "confusion": {
+        "正": {
+          "正": 63,
+          "中": 3,
+          "负": 2
+        },
+        "中": {
+          "正": 0,
+          "中": 32,
+          "负": 34
+        },
+        "负": {
+          "正": 0,
+          "中": 0,
+          "负": 66
+        }
+      },
+      "support": {
+        "正": 68,
+        "中": 66,
+        "负": 66
+      }
+    },
+    "star_baseline": {
+      "n": 200,
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "confusion": {
+        "正": {
+          "正": 68,
+          "中": 0,
+          "负": 0
+        },
+        "中": {
+          "正": 0,
+          "中": 66,
+          "负": 0
+        },
+        "负": {
+          "正": 0,
+          "中": 0,
+          "负": 66
+        }
+      },
+      "support": {
+        "正": 68,
+        "中": 66,
+        "负": 66
+      }
+    },
+    "labels": [
+      "正",
+      "中",
+      "负"
+    ]
+  },
+  "rhetoric": {
+    "n": 0,
+    "exact": null,
+    "binary": null
+  },
+  "topic": null,
+  "comparison_table": [
+    {
+      "system": "LLM_v1.4",
+      "n": 200,
+      "accuracy": 0.805,
+      "macro_f1": 0.793737
+    },
+    {
+      "system": "star_map_baseline",
+      "n": 200,
+      "accuracy": 1.0,
+      "macro_f1": 1.0
+    }
+  ],
+  "n_errors": 39,
+  "error_cases_file": "error_cases.csv",
+  "post_qc_instructions": [
+    "打开 `03标注结果/qc/qc_blind_to_label.xlsx`「盲标」页，用下拉填 `gold_sentiment` / `gold_rhetoric`（勿看 `qc_with_model.csv`）。",
+    "可选：同步备份到 `qc_blind_to_label.csv`；也可只维护 xlsx（本脚本优先读 xlsx）。",
+    "运行：`python 10分析实验室/model_eval.py` → 自动切到 `human_gold` 模式，写出 Acc / Macro-F1 / 混淆矩阵 / 错例。",
+    "亦可跑 `python 03标注结果/qc/score_qc.py` 生成质检一致率报告（与本评估互补）。",
+    "勿清空或覆盖已填盲标表；重新抽样前请先备份。"
+  ],
+  "star_map_rule": "4-5→正, 3→中, 1-2→负"
+}
