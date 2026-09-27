@@ -1,12 +1,13 @@
 {
   "schema_version": "1.0",
   "available": true,
-  "generated_at": "2026-09-27T22:31:36+08:00",
+  "generated_at": "2026-09-27T22:52:00+08:00",
   "channel": "taptap",
   "caliber": "舆情侧流失风险信号（发声用户），非用户流失预测",
   "headline": "负向 1108 条中 375 条（33.84%）来自 ≥100h 高投入玩家；另有 154 条修辞伪装负向（字面/意图极性分离）、981 条可行动差评。",
   "thresholds": {
-    "high_hours": 100.0
+    "high_hours": 100.0,
+    "note": "展示口径阈值，非业务定标；可按分位点（如 P75）通过 --high-hours 配置"
   },
   "availability": {
     "played_hours_available": true,
@@ -19,6 +20,7 @@
     "neg_rate": 0.3693,
     "neg_rate_pp": 36.93,
     "played_hours_median": 298.1167,
+    "played_hours_p75": 876.5833,
     "n_high_investment_negative": 375,
     "high_investment_share_of_neg": 0.3384,
     "high_investment_share_of_neg_pp": 33.84,

@@ -1,10 +1,6 @@
 # 每日情报简报 · 2026-09-27
 
-> 决策：**routine**（by rule）· 异动维度不可用（anomaly_diagnosis.py 运行失败:
-Traceback (most recent call last):
-  File "D:\AI数据分析\明日方舟舆情日周保分析平台\10分析实验室\anomaly_diagnosis.py", line 23, in <module>
-    import pandas as pd
-ModuleNotFoundError: No module），维持常规监测。
+> 决策：**routine**（by rule）· 异动维度不可用（分析依赖未安装，已自动降级为常规监测模式），维持常规监测。
 
 ## 定性简报
 

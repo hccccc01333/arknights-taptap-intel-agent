@@ -251,6 +251,11 @@ def build_payload(m: list[dict[str, Any]], availability: dict[str, bool], ann_na
 
     hours_all = [r["played_hours"] for r in m if r["played_hours"] is not None]
     hours_median = sorted(hours_all)[len(hours_all) // 2] if hours_all else None
+    # 分位数参考（供业务校准阈值）：P75 = 排序后 75% 位置的值
+    hours_p75 = None
+    if hours_all:
+        s = sorted(hours_all)
+        hours_p75 = s[min(len(s) - 1, int(round(0.75 * (len(s) - 1))))]
 
     high_inv_neg = [
         r for r in neg if r["played_hours"] is not None and r["played_hours"] >= HIGH_HOURS
@@ -290,7 +295,10 @@ def build_payload(m: list[dict[str, Any]], availability: dict[str, bool], ann_na
         "channel": "taptap",
         "caliber": "舆情侧流失风险信号（发声用户），非用户流失预测",
         "headline": headline,
-        "thresholds": {"high_hours": HIGH_HOURS},
+        "thresholds": {
+            "high_hours": HIGH_HOURS,
+            "note": "展示口径阈值，非业务定标；可按分位点（如 P75）通过 --high-hours 配置",
+        },
         "availability": availability,
         "facts": {
             "n_total": n_total,
@@ -298,6 +306,7 @@ def build_payload(m: list[dict[str, Any]], availability: dict[str, bool], ann_na
             "neg_rate": round4(neg_rate),
             "neg_rate_pp": pp(neg_rate),
             "played_hours_median": round4(hours_median),
+            "played_hours_p75": round4(hours_p75),
             "n_high_investment_negative": len(high_inv_neg),
             "high_investment_share_of_neg": round4(high_inv_share_of_neg),
             "high_investment_share_of_neg_pp": pp(high_inv_share_of_neg),
@@ -353,7 +362,7 @@ def render_report(p: dict[str, Any]) -> str:
         "|----|------|",
         f"| 生成时间 | {p['generated_at']} |",
         f"| 口径 | {p['caliber']} |",
-        f"| 高投入阈值 | ≥{p['thresholds']['high_hours']:.0f}h |",
+        f"| 高投入阈值 | ≥{p['thresholds']['high_hours']:.0f}h（{p['thresholds']['note']}） |",
         f"| 标注源 | `{p['source']['annotations']}` |",
         f"| 字段可用性 | 时长={'可用' if p['availability']['played_hours_available'] else '不可用'} · 推荐={'可用' if p['availability']['recommend_available'] else '不可用'} · 点赞={'可用' if p['availability']['support_available'] else '本切片全 0，不可用'} |",
         "",
@@ -378,6 +387,7 @@ def render_report(p: dict[str, Any]) -> str:
         f"| 修辞伪装负向 n | {f['n_rhetoric_disguised']} |",
         f"| 可行动差评 n | {f['n_actionable_negative']} |",
         f"| 时长中位数 | {f['played_hours_median'] if f['played_hours_median'] is not None else '—'} h |",
+        f"| 时长 P75（阈值校准参考） | {f['played_hours_p75'] if f['played_hours_p75'] is not None else '—'} h |",
         "",
         "## 分主题风险表（按负向率降序）",
         "",
@@ -424,13 +434,21 @@ def render_report(p: dict[str, Any]) -> str:
 
 
 def main() -> None:
+    global HIGH_HOURS
     ap = argparse.ArgumentParser(description="11情报Agent risk insight layering")
     ap.add_argument(
         "--ann",
         default=str(ROOT / "03标注结果" / "annotations_v1_4.csv"),
         help="annotations CSV path",
     )
+    ap.add_argument(
+        "--high-hours",
+        type=float,
+        default=HIGH_HOURS,
+        help=f"高投入阈值（小时），默认 {HIGH_HOURS:.0f}；展示口径，可按业务分位点（如 P75）配置",
+    )
     args = ap.parse_args()
+    HIGH_HOURS = float(args.high_hours)
 
     ann_path = Path(args.ann)
     merged, availability = load_merged(ann_path)

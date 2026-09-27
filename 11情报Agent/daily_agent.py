@@ -62,13 +62,37 @@ def run_tool(script: Path) -> None:
         raise RuntimeError(f"{script.name} 运行失败:\n{r.stderr[-800:]}")
 
 
+def friendly_reason(e: Exception) -> str:
+    """异常 → 面向报告的因果短句（不暴露 traceback / 具体包名堆栈）。"""
+    msg = str(e)
+    if isinstance(e, ModuleNotFoundError) or "ModuleNotFoundError" in msg or "ImportError" in msg:
+        return "分析依赖未安装，已自动降级为常规监测模式"
+    if isinstance(e, subprocess.TimeoutExpired) or "Timeout" in type(e).__name__:
+        return "分析运行超时，已自动降级为常规监测模式"
+    if isinstance(e, FileNotFoundError):
+        return "分析脚本缺失，已自动降级为常规监测模式"
+    return "分析运行异常，已自动降级为常规监测模式"
+
+
+def log_traceback(e: Exception, tool: str) -> None:
+    """完整 traceback 只进本地日志（*.log 已被 .gitignore 排除），不进公开报告。"""
+    import traceback
+
+    LOG_DIR = LAB / "outputs"
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with (LOG_DIR / "agent_run.log").open("a", encoding="utf-8") as f:
+        f.write(f"\n[{datetime.now(TZ).isoformat(timespec='seconds')}] {tool} failed\n")
+        f.write(traceback.format_exc())
+
+
 def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
-    """跑两个 tool 并汇总 facts。tool 失败 → 该维度显式标不可用，不静默吞错。"""
+    """跑两个 tool 并汇总 facts。tool 失败 → 该维度显式降级；完整异常只留本地日志。"""
     # 风险分层 tool（纯标准库；失败则整个情报不可产出）
     try:
         run_tool(RISK_SCRIPT)
     except Exception as e:
-        raise RuntimeError(f"risk_insight 运行失败（无降级路径，缺少核心 facts）: {e}") from e
+        log_traceback(e, "risk_insight")
+        raise RuntimeError(f"risk_insight 运行失败（无降级路径，缺少核心 facts）: {friendly_reason(e)}") from e
     risk = json.loads(RISK_JSON.read_text(encoding="utf-8"))
 
     anomaly: dict[str, Any] | None = None
@@ -76,12 +100,13 @@ def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
         try:
             run_tool(ANOMALY_SCRIPT)
         except Exception as e:  # 依赖缺失/超时等：显式降级，不崩溃
-            anomaly = {"available": False, "reason": str(e).strip()[:200]}
+            log_traceback(e, "anomaly_diagnosis")
+            anomaly = {"available": False, "reason": friendly_reason(e)}
         else:
             anomaly = (
                 json.loads(ANOMALY_JSON.read_text(encoding="utf-8"))
                 if ANOMALY_JSON.exists()
-                else {"available": False, "reason": "未产出 outputs/anomaly_diagnosis.json"}
+                else {"available": False, "reason": "异动产出文件缺失，已自动降级为常规监测模式"}
             )
     else:
         anomaly = {"available": False, "reason": "调用方指定 --skip-anomaly"}
