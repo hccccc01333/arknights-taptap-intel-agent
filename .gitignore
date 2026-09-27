@@ -22,6 +22,7 @@ env/
 *.swp
 .cursor/
 .claude/
+.workbuddy/
 
 # Local drafts (not for public)
 11提示词工程/

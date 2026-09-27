@@ -44,6 +44,7 @@
 - **多渠对照**：B站 / 抖音 / 微博限量切片 + 四渠矩阵  
 - **跨渠道 AI**：`facts` 锁数 → 校验失败重试 / 模板降级  
 - **分析实验室**：异动显著性、模型评估、事件前后窗  
+- **每日情报 Agent**：感知（facts 锁数）→ 决策（规则兜底 + LLM 可选）→ 行动（深挖/常规路由）→ 简报；流失风险分层 + 修辞伪装负向识别  
 - **可复用 Skills**：爬虫 / 标注 / 报告 / 跨渠规格放在 `skills/`
 
 ---
@@ -119,6 +120,10 @@ python 10分析实验室/anomaly_diagnosis.py
 python 10分析实验室/model_eval.py
 python 10分析实验室/event_impact.py
 python 05展示页/build_dashboard.py
+
+# 每日情报 Agent（感知→决策→行动→简报；无 Key 走规则模式）
+python 11情报Agent/risk_insight.py          # 流失风险分层
+python 11情报Agent/daily_agent.py           # 当日情报简报
 ```
 
 一键演示刷新（已有标注与样本时）：
@@ -140,6 +145,7 @@ python scripts/refresh_demo.py
 06–08对照_*/     B站 / 抖音 / 微博
 09跨渠道AI/      facts 锁数 + 综合简报
 10分析实验室/    异动 / 评估 / 事件
+11情报Agent/     每日情报 Agent（风险分层 + 决策路由 + 简报）
 skills/          Agent Skills（唯一 Skill 源目录）
 docs/            方法论与构建说明
 scripts/         刷新演示、同步 Skills
@@ -155,6 +161,7 @@ scripts/         刷新演示、同步 Skills
 | [`arknights-llm-annotate-v14`](./skills/arknights-llm-annotate-v14/SKILL.md) | 标注两段式 v1.4 |
 | [`arknights-taptap-yuqing-report`](./skills/arknights-taptap-yuqing-report/SKILL.md) | 日/周报写法 |
 | [`arknights-cross-channel-facts`](./skills/arknights-cross-channel-facts/SKILL.md) | 跨渠 facts 锁数 |
+| [`arknights-daily-intel-agent`](./skills/arknights-daily-intel-agent/SKILL.md) | 每日情报 Agent |
 
 ```bash
 python scripts/sync_agent_skills.py
