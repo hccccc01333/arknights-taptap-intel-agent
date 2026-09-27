@@ -1,5 +1,6 @@
 # 明日方舟 · TapTap 舆情日周报分析平台
 
+[![CI](https://github.com/hccccc01333/arknights-taptap-yuqing/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/arknights-taptap-yuqing/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-skills%2F-111827)](./skills/)
@@ -123,7 +124,11 @@ python 05展示页/build_dashboard.py
 
 # 每日情报 Agent（感知→决策→行动→简报；无 Key 走规则模式）
 python 11情报Agent/risk_insight.py          # 流失风险分层
+python 11情报Agent/anomaly_lite.py          # 零依赖异动感知（近 4 窗检验）
 python 11情报Agent/daily_agent.py           # 当日情报简报
+
+# 单元测试（纯标准库，48 个用例）
+python -m unittest discover -s 11情报Agent/tests -v
 ```
 
 一键演示刷新（已有标注与样本时）：

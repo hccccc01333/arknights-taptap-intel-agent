@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run unit tests (stdlib only)
+        run: python -m unittest discover -s 11情报Agent/tests -v
+
+      - name: Rebuild intel reports
+        run: |
+          python 11情报Agent/risk_insight.py
+          python 11情报Agent/anomaly_lite.py
+          python 11情报Agent/daily_agent.py
+
+      - name: Brief hygiene — no stack traces in public reports
+        run: |
+          ! grep -rE "Traceback|ModuleNotFoundError" 11情报Agent/reports/
+
+      - name: Data hygiene — no PII fields in tracked JSON outputs
+        run: |
+          ! grep -rlE "user_name|avatar_url|device_raw|user_id" 11情报Agent/outputs/ 05展示页/dashboard_data.json

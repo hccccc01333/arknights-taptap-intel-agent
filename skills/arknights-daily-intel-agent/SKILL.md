@@ -28,10 +28,13 @@ metadata:
 
 | 步 | 模块 | 职责 | 失败处理 |
 |----|------|------|----------|
-| 1 感知 | `risk_insight.py` + `anomaly_diagnosis.py` | 代码算 facts | 异动依赖缺失 → 显式标不可用，不崩溃 |
+| 1 感知 | `risk_insight.py` + `anomaly_lite.py` | 代码算 facts | tool 失败 → 因果短句显式降级（traceback 只进本地日志），不崩溃 |
 | 2 决策 | `rule_decision` / `llm_decision` | 路由 deep_dive/routine | LLM 无 key/解析失败 → 规则兜底 |
 | 3 行动 | `act()` | 组装深挖素材 | 按决策分支，样例全部脱敏 |
 | 4 简报 | `render_brief` | Markdown 简报 | 无 key → 模板（数字仍由 facts 填充） |
+
+> 感知层统计（两比例 z 检验 / Wilson CI）在 `intel_stats.py` 纯标准库实现，
+> 与 10分析实验室口径一致；完整 Kitagawa 三分解仍在分析实验室（需 pandas）。
 
 ## 工作流
 

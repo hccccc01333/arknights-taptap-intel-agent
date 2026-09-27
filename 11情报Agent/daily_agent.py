@@ -36,8 +36,8 @@ TZ = timezone(timedelta(hours=8))
 ROOT = Path(__file__).resolve().parents[1]
 LAB = Path(__file__).resolve().parent
 RISK_SCRIPT = LAB / "risk_insight.py"
-ANOMALY_SCRIPT = ROOT / "10分析实验室" / "anomaly_diagnosis.py"
-ANOMALY_JSON = ROOT / "10分析实验室" / "outputs" / "anomaly_diagnosis.json"
+ANOMALY_SCRIPT = LAB / "anomaly_lite.py"  # 零依赖感知层；完整版见 10分析实验室（需 pandas）
+ANOMALY_JSON = LAB / "outputs" / "anomaly_lite.json"
 RISK_JSON = LAB / "outputs" / "risk_insight.json"
 REPORT_DIR = LAB / "reports"
 
@@ -112,11 +112,14 @@ def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
         anomaly = {"available": False, "reason": "调用方指定 --skip-anomaly"}
 
     cmp0 = None
+    top_contributors: list[dict[str, Any]] = []
     if anomaly and anomaly.get("available", True):
+        primary_id = anomaly.get("primary_comparison_id") or "week_vs_prev"
         for c in anomaly.get("comparisons", []):
-            if c.get("id") == "week_vs_prev":
+            if c.get("id") == primary_id:
                 cmp0 = c
                 break
+        top_contributors = anomaly.get("top_contributors") or []
     facts = {
         "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
         "risk": {
@@ -156,18 +159,7 @@ def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
                 "p_value": cmp0.get("p_value") if cmp0 else None,
                 "significant": cmp0.get("significant") if cmp0 else None,
                 "verdict": cmp0.get("verdict") if cmp0 else None,
-                "top_contributors": (
-                    [
-                        {
-                            "topic": r["topic_cn"],
-                            "total_pp": r["total_pp"],
-                            "kind": r["kind_hint"],
-                        }
-                        for r in anomaly.get("decomposition", {}).get("by_topic", [])[:3]
-                    ]
-                    if cmp0
-                    else []
-                ),
+                "top_contributors": top_contributors,
             }
             if anomaly
             else None
@@ -392,10 +384,12 @@ def render_brief(action: dict[str, Any], qual: str) -> str:
         )
     if "deep_dive" in action:
         dd = action["deep_dive"]
-        lines += ["", "## 深挖：主题贡献（Kitagawa 分解 Top）", ""]
+        lines += ["", "## 深挖：主题负向变化（Top，按负向数变化排序）", ""]
         for t in dd.get("contributor_table", []):
+            dpp = t.get("total_pp")
+            rate_bit = f"，负向率 {dpp:+.2f}pp" if dpp is not None else ""
             lines.append(
-                f"- {t['topic']}：{t['total_pp']:+.2f}pp（{'主题内' if t['kind'] == 'within' else '结构' if t['kind'] == 'structure' else '交互'}）"
+                f"- {t['topic']}：负向 {t.get('neg_delta', 0):+d} 条{rate_bit}"
             )
         lines += ["", "### 高投入负向代表样本（脱敏）", ""]
         for s in dd.get("high_risk_samples", []):
