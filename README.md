@@ -74,6 +74,8 @@
 
 ## 效果预览
 
+![看板首屏](./docs/preview_dashboard.png)
+
 1. 双击打开 [`05展示页/index.html`](./05展示页/index.html)（离线，无需起服务）  
 2. 查看 [`11情报Agent/reports/daily_intel_latest.md`](./11情报Agent/reports/daily_intel_latest.md) 每日情报简报（含异动决策与深挖）  
 3. 查看 [`11情报Agent/reports/risk_insight_latest.md`](./11情报Agent/reports/risk_insight_latest.md) 流失风险分层  
