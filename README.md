@@ -5,15 +5,16 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-skills%2F-111827)](./skills/)
 
-以 **TapTap 评价为主链**：采集 → 清洗 → LLM 结构化标注 → 日/周报 → 离线看板；叠加 B 站 / 抖音 / 微博对照，并用 **facts 锁数** 做跨渠道综合。
+以 **TapTap 评价为主链**：采集 → 清洗 → LLM 结构化标注 → **风险分层 → 每日情报 Agent（决策路由）** → 日/周报与离线看板；叠加 B 站 / 抖音 / 微博对照，全程 **facts 锁数**——数字由代码计算，LLM 不生成任何数字。
 
 | 项 | 内容 |
 |----|------|
 | 主链 | TapTap《明日方舟》评价（app_id=70253） |
 | 标注 | v1.4：字面 / 意图 / 主情绪 / 修辞分通道 |
+| 情报 Agent | 感知 → 决策（规则兜底 + LLM 可选）→ 行动 → 简报；显著异动触发深挖 |
+| 风险分层 | 舆情侧流失风险信号：高投入不满 / 高投入不推荐 / 修辞伪装负向 / 可行动差评 |
 | 跨渠 | 数字由代码锁定，LLM 只写定性 |
-| Skills | [`skills/`](./skills/README.md) |
-| 构建 | HCCCC |
+| Skills | [`skills/`](./skills/README.md)：5 个 Agent Skills |
 
 > 社交三渠为限量对照；降级语料会在 facts / 看板标明，不作全网 KPI。
 
@@ -62,9 +63,11 @@
 
 | 类别 | 选用 |
 |------|------|
-| 语言 / 数据 | Python、Pandas |
-| LLM | DeepSeek API（`json_object` + 高推理） |
+| 语言 / 数据 | Python、Pandas（清洗 / 异动分解） |
+| 情报 Agent | **纯标准库实现**（两比例 z 检验 / Wilson CI / facts 锁数），零第三方依赖 |
+| LLM | DeepSeek API（可选增强：决策与定性；无 Key 时规则引擎 + 模板全链路可跑） |
 | 交付 | Markdown 报告、离线 HTML 看板 |
+| 质量 | 48 个单元测试（stdlib unittest）+ CI（测试 / 报告重建 / 堆栈与 PII 卫生检查） |
 | Agent | [Agent Skills](https://agentskills.io)（`skills/*/SKILL.md`） |
 
 ---
@@ -72,10 +75,9 @@
 ## 效果预览
 
 1. 双击打开 [`05展示页/index.html`](./05展示页/index.html)（离线，无需起服务）  
-2. 查看 [`04日报周报/reports/`](./04日报周报/reports/) 日/周报终稿  
-3. 查看 [`09跨渠道AI/reports/`](./09跨渠道AI/reports/) 跨渠道简报  
-
-建议本地截一张看板首屏，放到 `docs/preview.png` 后在本段插入图片（可选）。
+2. 查看 [`11情报Agent/reports/daily_intel_latest.md`](./11情报Agent/reports/daily_intel_latest.md) 每日情报简报（含异动决策与深挖）  
+3. 查看 [`11情报Agent/reports/risk_insight_latest.md`](./11情报Agent/reports/risk_insight_latest.md) 流失风险分层  
+4. 查看 [`04日报周报/reports/`](./04日报周报/reports/) 日/周报终稿与 [`09跨渠道AI/reports/`](./09跨渠道AI/reports/) 跨渠道简报  
 
 ---
 
@@ -84,7 +86,8 @@
 ### 环境要求
 
 - Python 3.10+  
-- （可选）`DEEPSEEK_API_KEY`：重跑标注 / 跨渠 LLM 综合时需要  
+- **情报 Agent 模块零依赖**：clone 后无需安装任何包即可运行（感知层统计与风险分层均为纯标准库）  
+- （可选）`DEEPSEEK_API_KEY`：标注 / 跨渠 LLM 综合 / Agent 的 LLM 决策与定性；无 Key 走规则模式  
 
 ### 安装与演示刷新
 
@@ -92,6 +95,10 @@
 git clone https://github.com/hccccc01333/arknights-taptap-yuqing.git
 cd arknights-taptap-yuqing
 
+# 情报 Agent（零依赖，30 秒出简报）
+python 11情报Agent/daily_agent.py
+
+# 完整链路（清洗 / 标注 / 看板需要第三方依赖时）
 pip install -r requirements.txt
 python scripts/refresh_demo.py
 ```
@@ -181,6 +188,8 @@ python scripts/sync_agent_skills.py
 - 主 KPI 仅 TapTap 评价切片，不是全网舆情中台  
 - 抖音 / 微博可能含降级样本，叙事中会标明  
 - 模型评估在人工金标回收前可能使用 proxy 口径，见分析实验室报告  
+- 风险分层是**舆情侧风险信号**（发声用户口径），不是用户流失预测；无留存 / 回流数据前不做因果与转化归因  
+- 高投入阈值为展示口径（默认 ≥100h，`--high-hours` 可配置），分位点校准参考见风险分层报告  
 
 ---
 
@@ -189,8 +198,12 @@ python scripts/sync_agent_skills.py
 - [x] TapTap 主链采集 / 标注 / 日周报 / 看板  
 - [x] 四渠对照 + facts 锁数综合  
 - [x] 分析实验室（异动 / 评估 / 事件）  
-- [x] Agent Skills 打包（`skills/`）  
+- [x] Agent Skills 打包（`skills/`，5 个）  
+- [x] 每日情报 Agent（感知 / 决策路由 / 简报）+ 舆情侧风险分层  
+- [x] 零依赖感知层（`intel_stats` 统计）+ 48 个单元测试 + CI  
+- [ ] LLM 决策与定性路径实跑验证（当前规则模式全链路可用）  
 - [ ] 人工金标回收后输出正式一致率  
+- [ ] 传播维度：修复 support_count 采集后激活「高传播差评」层  
 - [ ] 对照渠在可用 Cookie 下提升真采样占比  
 
 ---
