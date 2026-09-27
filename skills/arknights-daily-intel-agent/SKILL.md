@@ -9,7 +9,7 @@ license: MIT
 metadata:
   version: "1.0"
   standard: agentskills.io
-  project: arknights-taptap-yuqing
+  project: arknights-taptap-intel-agent
 ---
 
 # 每日情报 Agent · 感知→决策→行动→简报

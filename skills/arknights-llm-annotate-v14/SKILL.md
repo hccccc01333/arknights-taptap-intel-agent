@@ -9,7 +9,7 @@ license: MIT
 metadata:
   version: "1.4"
   standard: agentskills.io
-  project: arknights-taptap-yuqing
+  project: arknights-taptap-intel-agent
 ---
 
 # 标注 Schema v1.4（修辞两段式）

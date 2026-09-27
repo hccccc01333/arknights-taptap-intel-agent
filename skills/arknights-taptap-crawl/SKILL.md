@@ -9,7 +9,7 @@ license: MIT
 metadata:
   version: "1.0"
   standard: agentskills.io
-  project: arknights-taptap-yuqing
+  project: arknights-taptap-intel-agent
 ---
 
 # TapTap 评价爬虫（字段契约）

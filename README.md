@@ -1,6 +1,6 @@
 # 明日方舟 · TapTap 玩家情报 Agent
 
-[![CI](https://github.com/hccccc01333/arknights-taptap-yuqing/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/arknights-taptap-yuqing/actions/workflows/ci.yml)
+[![CI](https://github.com/hccccc01333/arknights-taptap-intel-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/arknights-taptap-intel-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-skills%2F-111827)](./skills/)
@@ -92,8 +92,8 @@
 ### 安装与演示刷新
 
 ```bash
-git clone https://github.com/hccccc01333/arknights-taptap-yuqing.git
-cd arknights-taptap-yuqing
+git clone https://github.com/hccccc01333/arknights-taptap-intel-agent.git
+cd arknights-taptap-intel-agent
 
 # 情报 Agent（零依赖，30 秒出简报）
 python 11情报Agent/daily_agent.py

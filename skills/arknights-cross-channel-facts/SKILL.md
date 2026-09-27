@@ -8,7 +8,7 @@ license: MIT
 metadata:
   version: "1.0"
   standard: agentskills.io
-  project: arknights-taptap-yuqing
+  project: arknights-taptap-intel-agent
 ---
 
 # 跨渠道 AI · facts 锁数

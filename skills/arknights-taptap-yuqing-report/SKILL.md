@@ -8,7 +8,7 @@ license: MIT
 metadata:
   version: "1.0"
   standard: agentskills.io
-  project: arknights-taptap-yuqing
+  project: arknights-taptap-intel-agent
 ---
 
 # TapTap《明日方舟》舆情日/周报
