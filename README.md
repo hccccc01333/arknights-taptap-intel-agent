@@ -1,4 +1,4 @@
-# 明日方舟 · TapTap 舆情日周报分析平台
+# 明日方舟 · TapTap 玩家情报 Agent
 
 [![CI](https://github.com/hccccc01333/arknights-taptap-yuqing/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/arknights-taptap-yuqing/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
