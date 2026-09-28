@@ -5,57 +5,32 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-skills%2F-111827)](./skills/)
 
-以 **TapTap 评价为主链**：采集 → 清洗 → LLM 结构化标注 → **风险分层 → 每日情报 Agent（决策路由）** → 日/周报与离线看板；叠加 B 站 / 抖音 / 微博对照，全程 **facts 锁数**——数字由代码计算，LLM 不生成任何数字。
+面向《明日方舟》玩家评价的**每日情报 Agent**：采集 → 清洗 → LLM 结构化标注 → 风险分层 → 决策路由 → 当日简报；叠加 B 站 / 抖音 / 微博对照。全程 **facts 锁数**——数字由代码计算，LLM 不生成任何数字。
 
 | 项 | 内容 |
 |----|------|
 | 主链 | TapTap《明日方舟》评价（app_id=70253） |
-| 标注 | v1.4：字面 / 意图 / 主情绪 / 修辞分通道 |
 | 情报 Agent | 感知 → 决策（规则兜底 + LLM 可选）→ 行动 → 简报；显著异动触发深挖 |
 | 风险分层 | 舆情侧流失风险信号：高投入不满 / 高投入不推荐 / 修辞伪装负向 / 可行动差评 |
-| 跨渠 | 数字由代码锁定，LLM 只写定性 |
+| 标注 | v1.4 两段式：字面 / 意图 / 主情绪 / 修辞分通道 |
 | Skills | [`skills/`](./skills/README.md)：5 个 Agent Skills |
 
 > 社交三渠为限量对照；降级语料会在 facts / 看板标明，不作全网 KPI。
 
-**快速入口：** [打开看板](./05展示页/index.html) · [构建说明](./docs/构建说明.md) · [方法论](./docs/方法论.md) · [日/周报示例](./04日报周报/reports/)
-
----
-
-## 目录
-
-- [功能特性](#功能特性)
-- [解决什么问题](#解决什么问题)
-- [技术栈](#技术栈)
-- [效果预览](#效果预览)
-- [快速开始](#快速开始)
-- [使用说明](#使用说明)
-- [目录结构](#目录结构)
-- [Agent Skills](#agent-skills)
-- [边界说明](#边界说明)
-- [路线图](#路线图)
-- [许可证](#许可证)
-
----
-
-## 功能特性
-
-- **评价采集**：TapTap 列表接口翻页、字段契约、断点续跑  
-- **结构化标注**：DeepSeek JSON 输出；v1.4 两段式（裂隙线索 → 整体态度）  
-- **日 / 周报**：四问法 + 执行摘要四句；薄样本禁止瞎写环比  
-- **多渠对照**：B站 / 抖音 / 微博限量切片 + 四渠矩阵  
-- **跨渠道 AI**：`facts` 锁数 → 校验失败重试 / 模板降级  
-- **分析实验室**：异动显著性、模型评估、事件前后窗  
-- **每日情报 Agent**：感知（facts 锁数）→ 决策（规则兜底 + LLM 可选）→ 行动（深挖/常规路由）→ 简报；流失风险分层 + 修辞伪装负向识别  
-- **可复用 Skills**：爬虫 / 标注 / 报告 / 跨渠规格放在 `skills/`
+**快速入口：** [打开看板](./05展示页/index.html) · [每日情报简报](./11情报Agent/reports/daily_intel_latest.md) · [方法论](./docs/方法论.md) · [构建说明](./docs/构建说明.md)
 
 ---
 
 ## 解决什么问题
 
-运营侧需要从海量玩家评价里快速看到的不只是情绪结构，而是**每天该看什么、该防什么、该转给谁**：负向风险是否集中在高投入玩家、哪些吐槽可以转成运营动作、以及讽刺 / 高级黑 / 反串等不易被「单字段正负」抓住的伪装话术。
+运营侧从海量玩家评价里要看到的不只是情绪结构，而是三件事：**每天该看什么**（异动是否显著）、**该防什么**（负向风险是否集中在高投入玩家）、**该转给谁**（哪些吐槽可以转成具体运营动作）。难处在于：讽刺 / 高级黑 / 反串等伪装话术会被「单字段正负」漏掉，异常波动会被抽样噪声淹没，而 LLM 生成的报告里数字最容易失真。
 
-本仓库把非结构化评论变成可聚合指标，并在此基础上跑一个**每日情报 Agent**：代码计算并锁定事实指标（facts）→ 规则/LLM 决策路由（深挖 vs 常规）→ 输出当日简报；LLM 不生成任何数字，依赖异常时自动降级并写明原因。配套**舆情侧流失风险分层**（高投入不满、高投入不推荐、修辞伪装负向、可行动差评）与分主题干预方向映射，产出可复现的日/周报与离线看板。
+本仓库的处理方式：
+
+1. **结构化标注打底**：DeepSeek JSON 输出，v1.4 两段式标注（先挖字面之下的线索，再判整体态度），字面 / 意图 / 主情绪 / 修辞分通道——反话、阴阳、高级黑、反串单独识别。
+2. **风险分层**：按「高投入不满（≥100h 玩家的负向）、高投入不推荐、修辞伪装负向、可行动差评」四层切分，并按数值、活动、商业化、性能、玩法等主题映射干预方向。
+3. **每日情报 Agent**：感知（代码算 facts）→ 决策（显著性检验 + 规则引擎兜底，LLM 可选）→ 行动（显著异动触发深挖，否则常规监测）→ 简报。LLM 不生成任何数字，依赖异常时自动降级并写明原因。
+4. **可复现交付**：日 / 周报（四问法 + 执行摘要；薄样本禁写环比）、跨渠道 facts 锁数综合、离线 HTML 看板；TapTap 采集带字段契约与断点续跑。
 
 ---
 
@@ -76,22 +51,22 @@
 
 ![看板首屏](./docs/preview_dashboard.png)
 
-1. 双击打开 [`05展示页/index.html`](./05展示页/index.html)（离线，无需起服务）  
-2. 查看 [`11情报Agent/reports/daily_intel_latest.md`](./11情报Agent/reports/daily_intel_latest.md) 每日情报简报（含异动决策与深挖）  
-3. 查看 [`11情报Agent/reports/risk_insight_latest.md`](./11情报Agent/reports/risk_insight_latest.md) 流失风险分层  
-4. 查看 [`04日报周报/reports/`](./04日报周报/reports/) 日/周报终稿与 [`09跨渠道AI/reports/`](./09跨渠道AI/reports/) 跨渠道简报  
+*离线看板首屏：本周风险评级、洞察链路、高风险主题与决策队列。*
+
+| 产出 | 入口 |
+|------|------|
+| 每日情报简报（异动决策 + 深挖） | [`11情报Agent/reports/daily_intel_latest.md`](./11情报Agent/reports/daily_intel_latest.md) |
+| 流失风险分层 | [`11情报Agent/reports/risk_insight_latest.md`](./11情报Agent/reports/risk_insight_latest.md) |
+| 日 / 周报终稿 | [`04日报周报/reports/`](./04日报周报/reports/) |
+| 跨渠道综合简报 | [`09跨渠道AI/reports/`](./09跨渠道AI/reports/) |
+| 离线看板（双击即开） | [`05展示页/index.html`](./05展示页/index.html) |
 
 ---
 
 ## 快速开始
 
-### 环境要求
-
-- Python 3.10+  
-- **情报 Agent 模块零依赖**：clone 后无需安装任何包即可运行（感知层统计与风险分层均为纯标准库）  
-- （可选）`DEEPSEEK_API_KEY`：标注 / 跨渠 LLM 综合 / Agent 的 LLM 决策与定性；无 Key 走规则模式  
-
-### 安装与演示刷新
+- Python 3.10+；**情报 Agent 模块零依赖**，clone 后无需安装任何包即可运行
+- （可选）`DEEPSEEK_API_KEY`：标注 / 跨渠 LLM 综合 / Agent 的 LLM 决策与定性；无 Key 走规则模式
 
 ```bash
 git clone https://github.com/hccccc01333/arknights-taptap-intel-agent.git
@@ -100,50 +75,40 @@ cd arknights-taptap-intel-agent
 # 情报 Agent（零依赖，30 秒出简报）
 python 11情报Agent/daily_agent.py
 
-# 完整链路（清洗 / 标注 / 看板需要第三方依赖时）
+# 完整链路（清洗 / 标注 / 看板等需要第三方依赖时）
 pip install -r requirements.txt
 python scripts/refresh_demo.py
 ```
 
-然后用浏览器打开 `05展示页/index.html`。
+看板双击 `05展示页/index.html` 即可打开。
 
 ---
 
 ## 使用说明
 
 ```bash
-# 清洗
-python 02数据/preprocess_reviews.py
+# 每日情报 Agent（感知 → 决策 → 行动 → 简报；无 Key 走规则模式）
+python 11情报Agent/risk_insight.py          # 流失风险分层
+python 11情报Agent/anomaly_lite.py          # 零依赖异动感知（近 4 窗检验）
+python 11情报Agent/daily_agent.py           # 当日情报简报
 
-# 小样本标注（需 API Key）
+# 清洗与标注（标注需 API Key）
+python 02数据/preprocess_reviews.py
 python 02数据/annotate_reviews.py --limit 50
 
-# 日/周报
+# 日 / 周报与跨渠综合
 python 04日报周报/build_skill_reports.py
-
-# 跨渠 facts + 综合
 python 09跨渠道AI/build_channel_facts.py
 python 09跨渠道AI/synthesize_cross_channel.py
 
-# 分析实验室 → 再重建看板
+# 分析实验室 → 重建看板
 python 10分析实验室/anomaly_diagnosis.py
 python 10分析实验室/model_eval.py
 python 10分析实验室/event_impact.py
 python 05展示页/build_dashboard.py
 
-# 每日情报 Agent（感知→决策→行动→简报；无 Key 走规则模式）
-python 11情报Agent/risk_insight.py          # 流失风险分层
-python 11情报Agent/anomaly_lite.py          # 零依赖异动感知（近 4 窗检验）
-python 11情报Agent/daily_agent.py           # 当日情报简报
-
 # 单元测试（纯标准库，48 个用例）
 python -m unittest discover -s 11情报Agent/tests -v
-```
-
-一键演示刷新（已有标注与样本时）：
-
-```bash
-python scripts/refresh_demo.py
 ```
 
 ---
@@ -213,7 +178,3 @@ python scripts/sync_agent_skills.py
 ## 许可证
 
 本项目采用 [MIT License](./LICENSE)。
-
----
-
-构建：HCCCC
