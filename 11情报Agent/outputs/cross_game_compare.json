@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-09-28T15:17:59+08:00",
+  "generated_at": "2026-09-28T16:07:31+08:00",
   "games": [
     {
       "game": "明日方舟",
@@ -45,32 +45,32 @@
     {
       "game": "鸣潮",
       "structure": {
-        "n": 300,
-        "n_with_tags": 207,
-        "mean_score_norm": 0.37,
-        "not_recommend_rate": 0.86,
-        "played_hours_median": 85.92,
+        "n": 3009,
+        "n_with_tags": 1923,
+        "mean_score_norm": 0.53,
+        "not_recommend_rate": 0.67,
+        "played_hours_median": 78.15,
         "tag_dimensions": [
           {
             "dimension": "画面音乐",
-            "up": 121,
-            "down": 73,
-            "up_rate": 0.62,
-            "total": 194
+            "up": 1366,
+            "down": 486,
+            "up_rate": 0.74,
+            "total": 1852
           },
           {
             "dimension": "可玩性",
-            "up": 81,
-            "down": 121,
-            "up_rate": 0.4,
-            "total": 202
+            "up": 1049,
+            "down": 817,
+            "up_rate": 0.56,
+            "total": 1866
           },
           {
             "dimension": "运营服务",
-            "up": 36,
-            "down": 165,
-            "up_rate": 0.18,
-            "total": 201
+            "up": 734,
+            "down": 1087,
+            "up_rate": 0.4,
+            "total": 1821
           }
         ]
       }
