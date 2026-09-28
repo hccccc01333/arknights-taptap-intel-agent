@@ -39,7 +39,20 @@ LAB = Path(__file__).resolve().parent
 OUT_DIR = LAB / "outputs"
 REPORT_DIR = LAB / "reports"
 
-HIGH_HOURS = 100.0  # 高投入阈值：明日方舟存量游戏语境下 100h+ 视为深度投入
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+
+
+def load_game_profile(game_key: str) -> dict[str, Any]:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
+
+
+HIGH_HOURS = 100.0  # 高投入阈值兜底值；实际取值：命令行 --high-hours > 游戏档案 > 本默认
 
 TOPIC_CN = {
     "gacha": "抽卡/商业化",
@@ -361,6 +374,7 @@ def render_report(p: dict[str, Any]) -> str:
         "| 项 | 内容 |",
         "|----|------|",
         f"| 生成时间 | {p['generated_at']} |",
+        f"| 游戏档案 | {(p.get('game') or {}).get('name', '—')}（`{(p.get('game') or {}).get('key', '—')}`） |",
         f"| 口径 | {p['caliber']} |",
         f"| 高投入阈值 | ≥{p['thresholds']['high_hours']:.0f}h（{p['thresholds']['note']}） |",
         f"| 标注源 | `{p['source']['annotations']}` |",
@@ -437,6 +451,11 @@ def main() -> None:
     global HIGH_HOURS
     ap = argparse.ArgumentParser(description="11情报Agent risk insight layering")
     ap.add_argument(
+        "--game",
+        default=DEFAULT_GAME,
+        help=f"游戏档案 key（games/<key>.json），默认 {DEFAULT_GAME}",
+    )
+    ap.add_argument(
         "--ann",
         default=str(ROOT / "03标注结果" / "annotations_v1_4.csv"),
         help="annotations CSV path",
@@ -444,15 +463,23 @@ def main() -> None:
     ap.add_argument(
         "--high-hours",
         type=float,
-        default=HIGH_HOURS,
-        help=f"高投入阈值（小时），默认 {HIGH_HOURS:.0f}；展示口径，可按业务分位点（如 P75）配置",
+        default=None,
+        help="高投入阈值（小时）；默认取游戏档案值，展示口径，可按业务分位点（如 P75）配置",
     )
     args = ap.parse_args()
-    HIGH_HOURS = float(args.high_hours)
+
+    prof = load_game_profile(args.game)
+    # 优先级：命令行 --high-hours > 游戏档案 > 模块兜底
+    HIGH_HOURS = (
+        float(args.high_hours)
+        if args.high_hours is not None
+        else float(prof.get("high_hours") or HIGH_HOURS)
+    )
 
     ann_path = Path(args.ann)
     merged, availability = load_merged(ann_path)
     payload = build_payload(merged, availability, ann_path.name)
+    payload["game"] = {"key": prof.get("key"), "name": prof.get("name")}
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)

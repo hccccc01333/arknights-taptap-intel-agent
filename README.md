@@ -13,6 +13,7 @@
 | 情报 Agent | 感知 → 决策（规则兜底 + LLM 可选）→ 行动 → 简报；显著异动触发深挖 |
 | 风险分层 | 舆情侧流失风险信号：高投入不满 / 高投入不推荐 / 修辞伪装负向 / 可行动差评 |
 | 标注 | v1.4 两段式：字面 / 意图 / 主情绪 / 修辞分通道 |
+| 游戏档案 | [`games/<key>.json`](./games/README.md) 驱动 app_id / 阈值 / 等价名 / 跨渠关键词——换档案即换游戏 |
 | Skills | [`skills/`](./skills/README.md)：5 个 Agent Skills |
 
 > 社交三渠为限量对照；降级语料会在 facts / 看板标明，不作全网 KPI。
@@ -125,6 +126,7 @@ python -m unittest discover -s 11情报Agent/tests -v
 09跨渠道AI/      facts 锁数 + 综合简报
 10分析实验室/    异动 / 评估 / 事件
 11情报Agent/     每日情报 Agent（风险分层 + 决策路由 + 简报）
+games/           游戏档案（参数化入口：换档案即换游戏）
 skills/          Agent Skills（唯一 Skill 源目录）
 docs/            方法论与构建说明
 scripts/         刷新演示、同步 Skills

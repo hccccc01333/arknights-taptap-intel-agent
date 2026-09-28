@@ -13,6 +13,21 @@ import pandas as pd
 
 TZ = timezone(timedelta(hours=8))
 ROOT = Path(__file__).resolve().parents[1]
+
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+
+
+def load_game_profile(game_key: str = DEFAULT_GAME) -> dict:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
+
+
+GAME_PROFILE = load_game_profile()
 DATA = ROOT / "02数据"
 ANN = ROOT / "03标注结果"
 OUT = ROOT / "04日报周报"
@@ -233,7 +248,7 @@ def meta_block(
 ) -> list[str]:
     now = datetime.now(TZ)
     return [
-        f"# TapTap《明日方舟》评价 · 样例{kind}",
+        f"# TapTap《{GAME_PROFILE.get('name', '')}》评价 · 样例{kind}",
         "",
         "## 元数据",
         "",

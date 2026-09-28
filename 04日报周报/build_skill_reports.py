@@ -15,6 +15,21 @@ import pandas as pd
 
 TZ = timezone(timedelta(hours=8))
 ROOT = Path(__file__).resolve().parents[1]
+
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+
+
+def load_game_profile(game_key: str = DEFAULT_GAME) -> dict:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
+
+
+GAME_PROFILE = load_game_profile()
 DATA = ROOT / "02数据"
 ANN = ROOT / "03标注结果"
 OUT = ROOT / "04日报周报"
@@ -325,7 +340,7 @@ def build_daily(w: DailyWindow, ann_name: str) -> str:
     mode_cn = {"single": "单日", "roll": "滚动窗", "brief": "简报"}.get(w.mode, w.mode)
 
     lines: list[str] = [
-        f"# TapTap《明日方舟》舆情日报 · {w.anchor}",
+        f"# TapTap《{GAME_PROFILE.get('name', '')}》舆情日报 · {w.anchor}",
         "",
         "## 元数据",
         "",
@@ -340,7 +355,7 @@ def build_daily(w: DailyWindow, ann_name: str) -> str:
         )
         + " |",
         f"| 样本量 | 本期 **n={n}**；锚定日 n={w.n_anchor}；{cmp_note} |",
-        "| 渠道 | TapTap 评价，app_id=70253 |",
+        f"| 渠道 | TapTap 评价，app_id={GAME_PROFILE.get('app_id')} |",
         f"| 标注 | `{ann_name}` / prompt {prompt_ver or 'v1.x'}；`sentiment`=整体态度 |",
         f"| 风险等级 | **{risk}**（{risk_why}） |",
         f"| 生成 | `build_skill_reports.py` + Skill `arknights-taptap-yuqing-report` |",
@@ -548,7 +563,7 @@ def build_weekly(w: WeeklyWindow, ann_name: str) -> str:
         arc_txt = "；".join(arc_bits)
 
     lines: list[str] = [
-        f"# TapTap《明日方舟》舆情周报 · {w.start} ~ {w.end}",
+        f"# TapTap《{GAME_PROFILE.get('name', '')}》舆情周报 · {w.start} ~ {w.end}",
         "",
         "## 元数据",
         "",
@@ -556,7 +571,7 @@ def build_weekly(w: WeeklyWindow, ann_name: str) -> str:
         "|----|------|",
         f"| 窗口 | {w.start}～{w.end}（7 日，以锚定日为尾） |",
         f"| 样本量 | 本周 **n={n}**；{cmp_note} |",
-        "| 渠道 | TapTap 评价，app_id=70253 |",
+        f"| 渠道 | TapTap 评价，app_id={GAME_PROFILE.get('app_id')} |",
         f"| 标注 | `{ann_name}` / {prompt_ver or 'v1.x'} |",
         f"| 风险等级 | **{risk}**（{risk_why}） |",
         f"| 生成 | `build_skill_reports.py` + Skill `arknights-taptap-yuqing-report` |",

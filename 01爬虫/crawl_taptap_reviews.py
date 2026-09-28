@@ -35,10 +35,19 @@ CHECKPOINT_PATH = DATA_DIR / "checkpoint.json"
 
 BASE_URL = "https://www.taptap.cn"
 API_PATH = "/webapiv2/review/v2/list-by-app"
-APP_ID = 70253
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+APP_ID = 70253  # 兜底值；运行时以游戏档案为准（build_parser 的 --game）
 LIMIT = 10
 SCORE_MAX = 5
 TZ_CN = timezone(timedelta(hours=8))
+
+
+def load_game_profile(game_key: str) -> dict[str, Any]:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
 
 CSV_FIELDS = [
     "review_id",
@@ -389,6 +398,11 @@ def write_qc_report(
 
 
 def run(args: argparse.Namespace) -> int:
+    global APP_ID
+    prof = load_game_profile(getattr(args, "game", DEFAULT_GAME))
+    APP_ID = prof.get("app_id") or APP_ID
+    print(f"[game] {prof.get('name')} (app_id={APP_ID}) from games/{getattr(args, 'game', DEFAULT_GAME)}.json")
+
     load_dotenv(CRAWLER_DIR / ".env")
     x_ua = os.environ.get("TAPTAP_X_UA", "").strip()
     if not x_ua:
@@ -579,7 +593,10 @@ def run(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Crawl TapTap reviews for Arknights (app_id=70253)")
+    p = argparse.ArgumentParser(
+        description="Crawl TapTap reviews by game profile (games/<key>.json)"
+    )
+    p.add_argument("--game", default=DEFAULT_GAME, help="游戏档案 key（games/<key>.json）")
     p.add_argument("--mode", choices=["full", "incremental"], default="full")
     p.add_argument("--max-records", type=int, default=3000, help="Stop when local unique reviews reach this size")
     p.add_argument("--max-pages", type=int, default=0, help="0 means unlimited")

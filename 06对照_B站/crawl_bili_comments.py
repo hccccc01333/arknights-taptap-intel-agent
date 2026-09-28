@@ -29,6 +29,28 @@ from typing import Any
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
+
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+
+
+def load_game_profile(game_key: str = DEFAULT_GAME) -> dict:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
+
+
+GAME_PROFILE = load_game_profile()
+_ALIASES = [a for a in (GAME_PROFILE.get("aliases") or []) if a]
+
+
+def is_relevant(text: str) -> bool:
+    """软相关过滤：任一等价名（aliases）命中即视为相关。"""
+    low = (text or "").lower()
+    return any(a.lower() in low for a in _ALIASES)
 MOD_DIR = Path(__file__).resolve().parent
 RAW_DIR = MOD_DIR / "raw"
 REPORT_DIR = MOD_DIR / "reports"
@@ -427,9 +449,9 @@ def collect_videos(client: BiliClient, keywords: list[str], up_mids: list[int], 
                 nv = normalize_search_video(item, kw, client.stats.get("search_mode") or "search")
                 if not nv or nv["aid"] in seen:
                     continue
-                # soft relevance filter
+                # soft relevance filter（等价名来自游戏档案 aliases）
                 title = nv["title"]
-                if "明日方舟" not in title and "方舟" not in title and "arknights" not in title.lower():
+                if not is_relevant(title):
                     # keep if keyword was exact; still allow a few
                     if kw.replace(" ", "") not in title.replace(" ", ""):
                         continue
@@ -548,7 +570,7 @@ def main(args: argparse.Namespace) -> int:
     if sleep_max < sleep_min:
         sleep_max = sleep_min
 
-    keywords = [k.strip() for k in (args.keywords or os.environ.get("BILI_KEYWORDS", "明日方舟")).split(",") if k.strip()]
+    keywords = [k.strip() for k in (args.keywords or os.environ.get("BILI_KEYWORDS", GAME_PROFILE.get("cross_channel", {}).get("bili_keywords", ""))).split(",") if k.strip()]
     up_raw = args.up_mids or os.environ.get("BILI_UP_MIDS", "161775300")
     up_mids = [int(x.strip()) for x in up_raw.split(",") if x.strip().isdigit()]
 

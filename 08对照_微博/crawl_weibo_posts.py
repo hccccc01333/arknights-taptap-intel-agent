@@ -31,6 +31,28 @@ import requests
 
 MOD_DIR = Path(__file__).resolve().parent
 ROOT = MOD_DIR.parent
+
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+
+
+def load_game_profile(game_key: str = DEFAULT_GAME) -> dict:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
+
+
+GAME_PROFILE = load_game_profile()
+_ALIASES = [a for a in (GAME_PROFILE.get("aliases") or []) if a]
+
+
+def is_relevant(text: str) -> bool:
+    """软相关过滤：任一等价名（aliases）命中即视为相关。"""
+    low = (text or "").lower()
+    return any(a.lower() in low for a in _ALIASES)
 RAW_DIR = MOD_DIR / "raw"
 REPORT_DIR = MOD_DIR / "reports"
 RUN_LOG_DIR = MOD_DIR / "run_logs"
@@ -45,8 +67,8 @@ DEFAULT_UA = (
     "Mobile/15E148 Safari/604.1"
 )
 
-# 官方/相关账号 uid（搜索失败时降级拉时间线；失效可改 env）
-DEFAULT_UIDS = "6441486180"  # 明日方舟（常见官号；若失效脚本会记 notes）
+# 官方/相关账号 uid（搜索失败时降级拉时间线；失效可改 env 或游戏档案）
+DEFAULT_UIDS = GAME_PROFILE.get("cross_channel", {}).get("weibo_uids", "")
 
 TAG_RE = re.compile(r"<[^>]+>")
 WS_RE = re.compile(r"\s+")
@@ -411,10 +433,10 @@ def collect_posts(
         nv = normalize_post(mblog, keyword, source)
         if not nv or nv["mid"] in seen:
             return
-        # soft relevance
+        # soft relevance（等价名来自游戏档案 aliases）
         blob = (nv["text"] + " " + keyword).lower()
-        if "明日方舟" not in nv["text"] and "方舟" not in nv["text"] and "arknights" not in blob:
-            if "明日方舟" not in keyword and "方舟" not in keyword:
+        if not is_relevant(nv["text"]) and not is_relevant(blob):
+            if not is_relevant(keyword):
                 return
         seen.add(nv["mid"])
         posts.append(nv)

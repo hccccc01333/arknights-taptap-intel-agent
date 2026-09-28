@@ -50,7 +50,20 @@ INCONGRUITY_CUES = {
 
 TZ_CN = timezone(timedelta(hours=8))
 
-SYSTEM_PROMPT = """你是《明日方舟》TapTap 评价标注员。
+DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
+
+
+def load_game_profile(game_key: str) -> dict[str, Any]:
+    """加载游戏档案（games/game_profile.py，唯一参数化入口）。"""
+    sys.path.insert(0, str(ROOT / "games"))
+    from game_profile import load as _load  # noqa: PLC0415
+
+    return _load(game_key)
+
+
+GAME_NAME = load_game_profile(DEFAULT_GAME).get("name") or "该游戏"
+
+SYSTEM_PROMPT_TEMPLATE = """你是《__GAME__》TapTap 评价标注员。
 你必须输出 JSON 对象（json），不要 Markdown，不要解释。
 
 【强制两段式推理——先修辞，后整体态度】
@@ -115,6 +128,9 @@ intended_sentiment / sentiment = 对游戏的「整体态度」，不是「有�
 EXAMPLE JSON:
 {"topic_primary":"gameplay","literal_sentiment":"正","intended_sentiment":"负","sentiment":"负","actionable":"是","confidence":0.9,"rhetoric":"gaoji_hei","rhetoric_confidence":0.9,"incongruity_cues":"praise_shell_neg_fact,paren_leak,community_irony","reason":"褒义外壳+退坑打不过六炮"}
 """
+
+# 游戏名注入：用模板替换而非 f-string（prompt 内含 JSON 花括号，f-string 会被求值污染）
+SYSTEM_PROMPT = SYSTEM_PROMPT_TEMPLATE.replace("__GAME__", GAME_NAME)
 
 FEW_SHOTS = [
     {
