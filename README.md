@@ -58,6 +58,7 @@
 |------|------|
 | 每日情报简报（异动决策 + 深挖） | [`11情报Agent/reports/daily_intel_latest.md`](./11情报Agent/reports/daily_intel_latest.md) |
 | 流失风险分层 | [`11情报Agent/reports/risk_insight_latest.md`](./11情报Agent/reports/risk_insight_latest.md) |
+| 跨游戏同口径对比 | [`11情报Agent/reports/cross_game_compare_latest.md`](./11情报Agent/reports/cross_game_compare_latest.md) |
 | 日 / 周报终稿 | [`04日报周报/reports/`](./04日报周报/reports/) |
 | 跨渠道综合简报 | [`09跨渠道AI/reports/`](./09跨渠道AI/reports/) |
 | 离线看板（双击即开） | [`05展示页/index.html`](./05展示页/index.html) |
@@ -108,7 +109,12 @@ python 10分析实验室/model_eval.py
 python 10分析实验室/event_impact.py
 python 05展示页/build_dashboard.py
 
-# 单元测试（纯标准库，48 个用例）
+# 跨游戏同口径对比（结构层不依赖标注）
+python 11情报Agent/cross_game_compare.py \
+  --clean "明日方舟=02数据/processed/reviews_clean.csv" \
+  --clean "鸣潮=02数据_wuthering_waves/processed/reviews_clean.csv"
+
+# 单元测试（纯标准库，55+ 个用例）
 python -m unittest discover -s 11情报Agent/tests -v
 ```
 

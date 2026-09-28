@@ -229,27 +229,30 @@ def parse_item(item: dict[str, Any], request_from: int, crawled_at: str, raw_jso
     }
 
 
-def load_checkpoint() -> dict[str, Any]:
-    if not CHECKPOINT_PATH.exists():
+def load_checkpoint(path: Path | None = None) -> dict[str, Any]:
+    p = path or CHECKPOINT_PATH
+    if not p.exists():
         return {
             "last_from": 0,
             "watermark_review_id": None,
             "watermark_publish_time": None,
             "seen_review_ids": [],
         }
-    return json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
-def save_checkpoint(cp: dict[str, Any]) -> None:
-    CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CHECKPOINT_PATH.write_text(json.dumps(cp, ensure_ascii=False, indent=2), encoding="utf-8")
+def save_checkpoint(cp: dict[str, Any], path: Path | None = None) -> None:
+    p = path or CHECKPOINT_PATH
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cp, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def load_existing_index() -> dict[str, dict[str, Any]]:
-    if not REVIEWS_CSV.exists():
+def load_existing_index(reviews_csv: Path | None = None) -> dict[str, dict[str, Any]]:
+    src = reviews_csv or REVIEWS_CSV
+    if not src.exists():
         return {}
     index: dict[str, dict[str, Any]] = {}
-    with REVIEWS_CSV.open("r", encoding="utf-8-sig", newline="") as f:
+    with src.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             rid = str(row.get("review_id") or "")
@@ -258,14 +261,15 @@ def load_existing_index() -> dict[str, dict[str, Any]]:
     return index
 
 
-def write_reviews_csv(rows_by_id: dict[str, dict[str, Any]]) -> None:
-    REVIEWS_CSV.parent.mkdir(parents=True, exist_ok=True)
+def write_reviews_csv(rows_by_id: dict[str, dict[str, Any]], reviews_csv: Path | None = None) -> None:
+    dest = reviews_csv or REVIEWS_CSV
+    dest.parent.mkdir(parents=True, exist_ok=True)
     rows = sorted(
         rows_by_id.values(),
         key=lambda r: int(r["publish_time"]) if str(r.get("publish_time", "")).isdigit() else 0,
         reverse=True,
     )
-    with REVIEWS_CSV.open("w", encoding="utf-8-sig", newline="") as f:
+    with dest.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
@@ -327,7 +331,7 @@ class TapTapCrawler:
                 try:
                     return resp.json(), None, resp.status_code
                 except json.JSONDecodeError:
-                    bad = RAW_DIR / f"bad_response_from_{from_offset}.txt"
+                    bad = raw_dir / f"bad_response_from_{from_offset}.txt"
                     bad.write_text(resp.text[:5000], encoding="utf-8")
                     return None, "invalid_json", resp.status_code
             except requests.RequestException as exc:
@@ -403,27 +407,38 @@ def run(args: argparse.Namespace) -> int:
     APP_ID = prof.get("app_id") or APP_ID
     print(f"[game] {prof.get('name')} (app_id={APP_ID}) from games/{getattr(args, 'game', DEFAULT_GAME)}.json")
 
+    # 数据目录按游戏隔离（--data-dir；默认 02数据 保持向后兼容）
+    data_dir = Path(getattr(args, "data_dir", "") or DATA_DIR)
+    if not data_dir.is_absolute():
+        data_dir = ROOT / data_dir
+    reviews_csv = data_dir / "reviews.csv"
+    raw_dir = data_dir / "raw"
+    report_dir = data_dir / "reports"
+    run_log_dir = data_dir / "run_logs"
+    checkpoint_path = data_dir / "checkpoint.json"
+    print(f"[data] {data_dir}")
+
     load_dotenv(CRAWLER_DIR / ".env")
     x_ua = os.environ.get("TAPTAP_X_UA", "").strip()
     if not x_ua:
         print("缺少环境变量 TAPTAP_X_UA。请复制 config.example.env 为 .env 并填入浏览器抓到的 X-UA。", file=sys.stderr)
         return 2
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    run_log_dir.mkdir(parents=True, exist_ok=True)
 
     start_ts = None
     if args.since:
         start_ts = int(datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=TZ_CN).timestamp())
 
-    cp = load_checkpoint()
+    cp = load_checkpoint(checkpoint_path)
     start_from = args.from_offset
     if args.resume:
         start_from = int(cp.get("last_from") or 0)
 
-    existing = load_existing_index()
+    existing = load_existing_index(reviews_csv)
     crawler = TapTapCrawler(x_ua=x_ua, sleep_min=args.sleep_min, sleep_max=args.sleep_max)
 
     stats = {
@@ -445,7 +460,7 @@ def run(args: argparse.Namespace) -> int:
     from_offset = start_from
     stop = False
 
-    print(f"[start] mode={args.mode} from={from_offset} max_records={args.max_records} out={DATA_DIR}")
+    print(f"[start] mode={args.mode} from={from_offset} max_records={args.max_records} out={data_dir}")
 
     while not stop:
         if args.max_pages and stats["pages"] >= args.max_pages:
@@ -467,7 +482,7 @@ def run(args: argparse.Namespace) -> int:
         items = data.get("list") or []
 
         raw_name = f"from_{from_offset:06d}.json"
-        raw_path = RAW_DIR / raw_name
+        raw_path = raw_dir / raw_name
         raw_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
         crawled_at = now_cn_iso()
@@ -552,8 +567,8 @@ def run(args: argparse.Namespace) -> int:
         if stats["newest_review_id"] and not cp.get("watermark_review_id"):
             cp["watermark_review_id"] = stats["newest_review_id"]
             cp["watermark_publish_time"] = stats["newest_publish_time"]
-        save_checkpoint(cp)
-        write_reviews_csv(existing)
+        save_checkpoint(cp, checkpoint_path)
+        write_reviews_csv(existing, reviews_csv)
 
         print(
             f"[page] from={from_offset} got={len(items)} added={stats['added']} "
@@ -572,22 +587,22 @@ def run(args: argparse.Namespace) -> int:
         cp["watermark_publish_time"] = stats["newest_publish_time"]
     cp["last_from"] = from_offset
     cp["updated_at"] = now_cn_iso()
-    save_checkpoint(cp)
-    write_reviews_csv(existing)
+    save_checkpoint(cp, checkpoint_path)
+    write_reviews_csv(existing, reviews_csv)
 
     stats["ended_at"] = now_cn_iso()
     stats["total_rows"] = len(existing)
     if not stats["stop_reason"]:
         stats["stop_reason"] = "completed"
 
-    run_path = RUN_LOG_DIR / f"run_{datetime.now(TZ_CN).strftime('%Y%m%d_%H%M%S')}.json"
+    run_path = run_log_dir / f"run_{datetime.now(TZ_CN).strftime('%Y%m%d_%H%M%S')}.json"
     run_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    qc_path = REPORT_DIR / f"crawl_qc_{datetime.now(TZ_CN).strftime('%Y%m%d_%H%M%S')}.md"
+    qc_path = report_dir / f"crawl_qc_{datetime.now(TZ_CN).strftime('%Y%m%d_%H%M%S')}.md"
     write_qc_report(list(existing.values()), stats, qc_path)
 
     print(f"[done] total={len(existing)} stop={stats['stop_reason']}")
-    print(f"[out] {REVIEWS_CSV}")
+    print(f"[out] {reviews_csv}")
     print(f"[qc] {qc_path}")
     return 0 if not str(stats["stop_reason"]).startswith("blocked") else 3
 
@@ -597,6 +612,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Crawl TapTap reviews by game profile (games/<key>.json)"
     )
     p.add_argument("--game", default=DEFAULT_GAME, help="游戏档案 key（games/<key>.json）")
+    p.add_argument("--data-dir", default="", help="数据输出目录（默认 02数据；多游戏隔离时按游戏指定）")
     p.add_argument("--mode", choices=["full", "incremental"], default="full")
     p.add_argument("--max-records", type=int, default=3000, help="Stop when local unique reviews reach this size")
     p.add_argument("--max-pages", type=int, default=0, help="0 means unlimited")

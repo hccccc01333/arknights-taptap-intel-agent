@@ -86,3 +86,7 @@ _*.json
 docs/_*.md
 *.log
 **/tmp/
+
+# Multi-game validation slices (raw reviews contain PII - never commit)
+02数据_*/
+03标注结果_*/

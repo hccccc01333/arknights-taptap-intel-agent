@@ -50,11 +50,18 @@ def length_bucket(n: int) -> str:
 
 
 def main(args: argparse.Namespace) -> int:
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    data_dir = Path(getattr(args, "data_dir", "") or DATA_DIR)
+    if not data_dir.is_absolute():
+        data_dir = ROOT / data_dir
+    input_csv = data_dir / "reviews.csv"
+    processed_dir = data_dir / "processed"
+    report_dir = data_dir / "reports"
+    fig_dir = data_dir / "figures"
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(INPUT_CSV, dtype=str, keep_default_na=False)
+    df = pd.read_csv(input_csv, dtype=str, keep_default_na=False)
     n0 = len(df)
     drop_rows: list[dict] = []
 
@@ -125,7 +132,7 @@ def main(args: argparse.Namespace) -> int:
         axes[2].text(0.5, 0.5, "no played_hours", ha="center")
         axes[2].set_title("played_hours")
     fig.tight_layout()
-    box_path = FIG_DIR / f"preprocess_box_{now_tag()}.png"
+    box_path = fig_dir / f"preprocess_box_{now_tag()}.png"
     fig.savefig(box_path, dpi=120)
     plt.close(fig)
     fig_paths.append(box_path)
@@ -136,14 +143,14 @@ def main(args: argparse.Namespace) -> int:
     ax.set_xlabel("score")
     ax.set_ylabel("count")
     fig2.tight_layout()
-    score_path = FIG_DIR / f"preprocess_score_{now_tag()}.png"
+    score_path = fig_dir / f"preprocess_score_{now_tag()}.png"
     fig2.savefig(score_path, dpi=120)
     plt.close(fig2)
     fig_paths.append(score_path)
 
     # --- outputs ---
-    out_clean = PROCESSED_DIR / "reviews_clean.csv"
-    out_drop = PROCESSED_DIR / "dropped_rows.csv"
+    out_clean = processed_dir / "reviews_clean.csv"
+    out_drop = processed_dir / "dropped_rows.csv"
     # drop helper numeric cols that duplicate; keep useful derived
     save_df = df.copy()
     save_df.to_csv(out_clean, index=False, encoding="utf-8-sig")
@@ -164,12 +171,12 @@ def main(args: argparse.Namespace) -> int:
     bucket_counts = save_df["length_bucket"].value_counts().to_dict()
     platform_counts = save_df["publish_platform"].value_counts().to_dict() if "publish_platform" in save_df else {}
 
-    report = REPORT_DIR / f"preprocess_qc_{now_tag()}.md"
+    report = report_dir / f"preprocess_qc_{now_tag()}.md"
     lines = [
         "# 预处理质检报告",
         "",
         f"- 生成时间：{datetime.now(TZ_CN).isoformat(timespec='seconds')}",
-        f"- 输入：`{INPUT_CSV.as_posix()}`",
+        f"- 输入：`{input_csv.as_posix()}`",
         f"- 原始行数：{n0}",
         f"- 清洗后行数：{len(save_df)}",
         f"- 剔除行数：{len(drop_df)}（含重复 {dup_removed}）",
@@ -223,4 +230,6 @@ def main(args: argparse.Namespace) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(argparse.ArgumentParser().parse_args()))
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", default="", help="数据目录（默认 02数据；多游戏隔离时按游戏指定）")
+    raise SystemExit(main(ap.parse_args()))

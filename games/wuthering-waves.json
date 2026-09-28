@@ -1,0 +1,12 @@
+{
+  "key": "wuthering-waves",
+  "name": "鸣潮",
+  "app_id": 234280,
+  "high_hours": 100.0,
+  "aliases": ["鸣潮", "wuthering waves", "库洛"],
+  "cross_channel": {
+    "bili_keywords": "鸣潮",
+    "weibo_uids": ""
+  },
+  "notes": "第二款验证游戏：验证管线可复用性与跨游戏同主题对比。high_hours 与明日方舟同口径（100h）以便对比。"
+}

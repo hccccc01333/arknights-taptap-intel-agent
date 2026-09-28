@@ -593,10 +593,11 @@ def main(args: argparse.Namespace) -> int:
         rows.extend(PROBE_EXAMPLES)
 
     if not args.probes_only:
-        if not CLEAN_CSV.exists():
-            print(f"缺少清洗表：{CLEAN_CSV}", file=sys.stderr)
+        input_csv = Path(args.input) if getattr(args, "input", "") else CLEAN_CSV
+        if not input_csv.exists():
+            print(f"缺少清洗表：{input_csv}", file=sys.stderr)
             return 2
-        df_rows = list(csv.DictReader(CLEAN_CSV.open(encoding="utf-8-sig")))
+        df_rows = list(csv.DictReader(input_csv.open(encoding="utf-8-sig")))
         if args.score_filter:
             wanted = set(args.score_filter.split(","))
             df_rows = [r for r in df_rows if str(r.get("score_raw")) in wanted]
@@ -702,6 +703,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--probes-only", action="store_true", help="只跑探针例句")
     p.add_argument("--ids", default="", help="逗号分隔 review_id，只标这些")
     p.add_argument("--ids-file", default="", help="每行一个 review_id 的文本文件")
+    p.add_argument("--input", default="", help="输入 reviews_clean.csv（默认 02数据/processed/，多游戏按 --data-dir 指定）")
+    p.add_argument("--data-dir", default="", help="数据目录（默认 02数据）")
     p.add_argument("--output", default="", help="默认 03标注结果/annotations_v1_4.csv")
     p.add_argument("--checkpoint", default="", help="断点文件路径（分片并行时用）")
     p.add_argument("--model", default="")

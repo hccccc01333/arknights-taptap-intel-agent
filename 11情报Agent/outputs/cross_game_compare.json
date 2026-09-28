@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-28T15:17:59+08:00",
+  "games": [
+    {
+      "game": "明日方舟",
+      "structure": {
+        "n": 3000,
+        "n_with_tags": 2018,
+        "mean_score_norm": 0.73,
+        "not_recommend_rate": 0.37,
+        "played_hours_median": 298.12,
+        "tag_dimensions": [
+          {
+            "dimension": "画面音乐",
+            "up": 1664,
+            "down": 263,
+            "up_rate": 0.86,
+            "total": 1927
+          },
+          {
+            "dimension": "策略性",
+            "up": 1566,
+            "down": 349,
+            "up_rate": 0.82,
+            "total": 1915
+          },
+          {
+            "dimension": "可玩性",
+            "up": 1555,
+            "down": 396,
+            "up_rate": 0.8,
+            "total": 1951
+          },
+          {
+            "dimension": "运营服务",
+            "up": 1254,
+            "down": 634,
+            "up_rate": 0.66,
+            "total": 1888
+          }
+        ]
+      }
+    },
+    {
+      "game": "鸣潮",
+      "structure": {
+        "n": 300,
+        "n_with_tags": 207,
+        "mean_score_norm": 0.37,
+        "not_recommend_rate": 0.86,
+        "played_hours_median": 85.92,
+        "tag_dimensions": [
+          {
+            "dimension": "画面音乐",
+            "up": 121,
+            "down": 73,
+            "up_rate": 0.62,
+            "total": 194
+          },
+          {
+            "dimension": "可玩性",
+            "up": 81,
+            "down": 121,
+            "up_rate": 0.4,
+            "total": 202
+          },
+          {
+            "dimension": "运营服务",
+            "up": 36,
+            "down": 165,
+            "up_rate": 0.18,
+            "total": 201
+          }
+        ]
+      }
+    }
+  ],
+  "caliber": "同口径参照对比（各游戏样本量与采集时间窗不同，非同期 A/B）",
+  "boundaries": [
+    "各游戏样本量不同（如 3000 vs 300），占比对比需结合 n 看",
+    "标注层（负向率 / 修辞伪装）仅在 LLM 标注完成后可比；结构层为 TapTap 原生字段，任何游戏可跑",
+    "rating_tags 为玩家自选维度，不同游戏玩家打标签习惯不同（维度覆盖不均匀），对比以同维度内 up 率为准"
+  ]
+}
