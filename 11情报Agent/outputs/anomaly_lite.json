@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "available": true,
   "engine": "intel_stats (stdlib)",
-  "generated_at": "2026-09-29T12:43:32",
+  "generated_at": "2026-09-29T20:41:27",
   "channel": "taptap",
   "headline": "本周(2026-07-14~2026-07-20) vs 上周(2026-07-07~2026-07-13)：Δneg=+19.22pp，p=0.0097，负向率相对对照显著上升（α=0.05）",
   "primary_comparison_id": "week_vs_prev",
@@ -166,8 +166,8 @@
       "kind": "topic_delta"
     },
     {
-      "topic": "数值/平衡/养成",
-      "total_pp": 16.67,
+      "topic": "运营/客服/规则",
+      "total_pp": 100.0,
       "neg_delta": 1,
       "kind": "topic_delta"
     },
@@ -178,14 +178,14 @@
       "kind": "topic_delta"
     },
     {
-      "topic": "运营/客服/规则",
-      "total_pp": 100.0,
-      "neg_delta": 1,
+      "topic": "活动/版本",
+      "total_pp": -33.33,
+      "neg_delta": -1,
       "kind": "topic_delta"
     },
     {
-      "topic": "剧情/世界观",
-      "total_pp": 20.0,
+      "topic": "数值/平衡/养成",
+      "total_pp": 16.67,
       "neg_delta": 1,
       "kind": "topic_delta"
     }

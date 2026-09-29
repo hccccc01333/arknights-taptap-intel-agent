@@ -32,3 +32,24 @@ jobs:
       - name: Data hygiene — no PII fields in tracked JSON outputs
         run: |
           ! grep -rlE "user_name|avatar_url|device_raw|user_id" 11情报Agent/outputs/ 05展示页/dashboard_data.json
+
+      # 2026-09-29 事故复盘后新增：原始域 CSV 曾因 .gitignore 规则与实际目录名
+      # 不匹配（02数据_*/ vs 02数据/）而被推送到公开仓库。扫描升级为
+      # 「所有被 git 跟踪的文件」+ 排除代码/文档自身的字段名提及，防复发。
+      - name: PII guard — no plaintext identity columns in ANY tracked file
+        run: |
+          set -e
+          HIT=0
+          while IFS= read -r f; do
+            # 只扫 CSV，代码/文档里出现字段名是正常引用
+            case "$f" in *.csv) ;; *) continue ;; esac
+            if head -1 "$f" | grep -qE "(^|,)(user_name|user_id|avatar_url)(,|$)"; then
+              echo "::error file=$f::PII 明文字段出现在被跟踪的 CSV 中: $f"
+              HIT=1
+            fi
+          done < <(git ls-files)
+          if [ "$HIT" -ne 0 ]; then
+            echo "存在含明文身份字段的被跟踪 CSV，请先清洗或移出版本库"
+            exit 1
+          fi
+          echo "PII guard: 通过（所有被跟踪 CSV 均不含 user_name/user_id/avatar_url 列）"
