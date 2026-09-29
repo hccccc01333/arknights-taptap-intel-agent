@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-29T20:25:51+08:00",
+  "scope": "taptap",
+  "judge_criterion": "社区可发酵度：能否在本社区发酵 / 值不值得建话题",
+  "mode": "rule_fallback",
+  "degraded": true,
+  "degrade_reason": "未配置 DEEPSEEK_API_KEY（或调用失败）：当前分数为「热度+话题类型」代理分，不等于可发酵度，不可作为结论使用",
+  "note": "旧判据 matched_games（游戏归属）已不作为判据，仅保留作对照——未命中建档游戏 ≠ 与社区无关",
+  "verdict_threshold": {
+    "act": 60,
+    "watch": 35
+  },
+  "topics": [
+    {
+      "title": "白银之城技术测试招募开启",
+      "hashtag_id": "2530899",
+      "source": "S4_hot_board",
+      "page_view": 16370,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 60,
+      "verdict": "act",
+      "reason": "浏览 16370 属平台级热度；话题类型含「技术测试」，通常可引发讨论",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "霓虹深渊2定档",
+      "hashtag_id": "2525852",
+      "source": "S4_hot_board",
+      "page_view": 15722,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 55,
+      "verdict": "watch",
+      "reason": "浏览 15722 属平台级热度；话题类型含「定档」，通常可引发讨论",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "卡厄思梦境换帅",
+      "hashtag_id": "2529325",
+      "source": "S4_hot_board",
+      "page_view": 23539,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 52,
+      "verdict": "watch",
+      "reason": "浏览 23539 属平台级热度；话题类型含「换帅」，通常可引发讨论",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "妮姬新生庆典送185抽",
+      "hashtag_id": "2535271",
+      "source": "S4_hot_board",
+      "page_view": 11600,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 50,
+      "verdict": "watch",
+      "reason": "浏览 11600 属平台级热度；话题类型含「庆典」，通常可引发讨论",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "星布谷地联动宇树科技",
+      "hashtag_id": "2534244",
+      "source": "S4_hot_board",
+      "page_view": 3602,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 35,
+      "verdict": "watch",
+      "reason": "浏览 3602 中等；话题类型含「联动」，通常可引发讨论",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "三角洲行动二周年",
+      "hashtag_id": "2537190",
+      "source": "S4_hot_board",
+      "page_view": 6270,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 32,
+      "verdict": "skip",
+      "reason": "浏览 6270 中等；话题类型含「周年」，通常可引发讨论",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "游戏十年纪录片理想的存档上线",
+      "hashtag_id": "",
+      "source": "S4_hot_board",
+      "page_view": 5293,
+      "interaction": 374,
+      "matched_games": [],
+      "ferment_score": 30,
+      "verdict": "skip",
+      "reason": "浏览 5293 中等；互动 374 偏低",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "交错战线因整改暂停下载",
+      "hashtag_id": "2529447",
+      "source": "S4_hot_board",
+      "page_view": 3464,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 20,
+      "verdict": "skip",
+      "reason": "浏览 3464 中等",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "源初之结官方十大问答",
+      "hashtag_id": "2529324",
+      "source": "S4_hot_board",
+      "page_view": 1691,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 0,
+      "verdict": "skip",
+      "reason": "无可观测信号",
+      "suggested_action": "（降级模式，无具体建议）"
+    },
+    {
+      "title": "米哈游反舞弊通报",
+      "hashtag_id": "2530898",
+      "source": "S4_hot_board",
+      "page_view": 2524,
+      "interaction": 0,
+      "matched_games": [],
+      "ferment_score": 0,
+      "verdict": "skip",
+      "reason": "无可观测信号",
+      "suggested_action": "（降级模式，无具体建议）"
+    }
+  ],
+  "summary": {
+    "total": 10,
+    "act": 1,
+    "watch": 4,
+    "skip": 5,
+    "matched_games_nonempty": 0
+  }
+}
