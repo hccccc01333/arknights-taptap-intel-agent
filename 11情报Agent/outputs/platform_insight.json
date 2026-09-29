@@ -1,0 +1,400 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-29T12:39:00+08:00",
+  "scope": "platform",
+  "inputs": {
+    "hot_hashtags": 10,
+    "posts": 118,
+    "posts_discover": 84,
+    "posts_hashtag": 34,
+    "loaded_comments": 74
+  },
+  "hot_board": [
+    {
+      "sort": 1,
+      "title": "三角洲行动二周年",
+      "hashtag_id": "2537190",
+      "page_view": 6270,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 2,
+      "title": "星布谷地联动宇树科技",
+      "hashtag_id": "2534244",
+      "page_view": 3602,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 3,
+      "title": "白银之城技术测试招募开启",
+      "hashtag_id": "2530899",
+      "page_view": 16370,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 4,
+      "title": "妮姬新生庆典送185抽",
+      "hashtag_id": "2535271",
+      "page_view": 11600,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 5,
+      "title": "游戏十年纪录片理想的存档上线",
+      "hashtag_id": "",
+      "page_view": 5293,
+      "comment_count": 374,
+      "matched_games": []
+    },
+    {
+      "sort": 6,
+      "title": "源初之结官方十大问答",
+      "hashtag_id": "2529324",
+      "page_view": 1691,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 7,
+      "title": "卡厄思梦境换帅",
+      "hashtag_id": "2529325",
+      "page_view": 23539,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 8,
+      "title": "米哈游反舞弊通报",
+      "hashtag_id": "2530898",
+      "page_view": 2524,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 9,
+      "title": "霓虹深渊2定档",
+      "hashtag_id": "2525852",
+      "page_view": 15722,
+      "comment_count": 0,
+      "matched_games": []
+    },
+    {
+      "sort": 10,
+      "title": "交错战线因整改暂停下载",
+      "hashtag_id": "2529447",
+      "page_view": 3464,
+      "comment_count": 0,
+      "matched_games": []
+    }
+  ],
+  "topic_dig": [
+    {
+      "hashtag_id": "2530899",
+      "title": "白银之城技术测试招募开启",
+      "posts": 10,
+      "comments_declared": 20,
+      "supports": 0,
+      "ups": 42,
+      "pv_total": 2140,
+      "top_posts": [
+        {
+          "summary": "白银之城技术测试招募",
+          "app_title": "该游戏已下架",
+          "comments": 7,
+          "pv_total": 369
+        },
+        {
+          "summary": "白银之城回归测试：无新内容，主打性能优化",
+          "app_title": "该游戏已下架",
+          "comments": 2,
+          "pv_total": 399
+        },
+        {
+          "summary": "白银之城还有测试！玩家困惑",
+          "app_title": "该游戏已下架",
+          "comments": 2,
+          "pv_total": 381
+        }
+      ],
+      "interaction_total": 83,
+      "matched_games": []
+    },
+    {
+      "hashtag_id": "2535271",
+      "title": "妮姬新生庆典送185抽",
+      "posts": 8,
+      "comments_declared": 1,
+      "supports": 0,
+      "ups": 22,
+      "pv_total": 2138,
+      "top_posts": [
+        {
+          "summary": "胜利女神小美人鱼，T0辅助上线！",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 761
+        },
+        {
+          "summary": "妮姬新版本送185抽！深海人鱼莫莉自选齐发",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 614
+        },
+        {
+          "summary": "狂送185抽！国服妮姬干人事",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 238
+        }
+      ],
+      "interaction_total": 44,
+      "matched_games": []
+    },
+    {
+      "hashtag_id": "2537190",
+      "title": "三角洲行动二周年",
+      "posts": 8,
+      "comments_declared": 12,
+      "supports": 0,
+      "ups": 20,
+      "pv_total": 675,
+      "top_posts": [
+        {
+          "summary": "三角洲好起来！能和影之刃零联动",
+          "app_title": "该游戏已下架",
+          "comments": 5,
+          "pv_total": 174
+        },
+        {
+          "summary": "三角洲二周年明星赛！陈赫吃席被老赛团灭~",
+          "app_title": "该游戏已下架",
+          "comments": 2,
+          "pv_total": 43
+        },
+        {
+          "summary": "三角洲确认联动影之刃零！画风好反差~",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 267
+        }
+      ],
+      "interaction_total": 38,
+      "matched_games": []
+    },
+    {
+      "hashtag_id": "2534244",
+      "title": "星布谷地联动宇树科技",
+      "posts": 8,
+      "comments_declared": 0,
+      "supports": 0,
+      "ups": 13,
+      "pv_total": 461,
+      "top_posts": [
+        {
+          "summary": "星布谷地×宇树科技联动！娜洛或有改变？！",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 187
+        },
+        {
+          "summary": "最跨界的联动？《星布谷地》联动宇树科技！",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 77
+        },
+        {
+          "summary": "星布谷地联动宇树科技引热议！娜洛来到现实",
+          "app_title": "该游戏已下架",
+          "comments": 0,
+          "pv_total": 42
+        }
+      ],
+      "interaction_total": 17,
+      "matched_games": []
+    }
+  ],
+  "discover_ecosystem": {
+    "posts": 84,
+    "games_top": [
+      {
+        "game": "星布谷地",
+        "posts": 19
+      },
+      {
+        "game": "明日方舟",
+        "posts": 19
+      },
+      {
+        "game": "光·遇",
+        "posts": 16
+      },
+      {
+        "game": "燕云十六声",
+        "posts": 16
+      },
+      {
+        "game": "原神",
+        "posts": 2
+      },
+      {
+        "game": "奥星热浪",
+        "posts": 1
+      },
+      {
+        "game": "牧场气息",
+        "posts": 1
+      },
+      {
+        "game": "塔塔冒险队",
+        "posts": 1
+      },
+      {
+        "game": "忍者必须死3",
+        "posts": 1
+      },
+      {
+        "game": "寻光之旅",
+        "posts": 1
+      }
+    ],
+    "delisted_game_posts": 0,
+    "delisted_note": "TapTap 对下架游戏的展示名；下架游戏仍在产生 UGC 属平台生态事实，分析时勿当成正常在运营游戏",
+    "interaction_top": [
+      {
+        "summary": "为什么市面上只有乙女游戏而没有乙男游戏",
+        "app_title": "发现好游戏",
+        "comments": 891,
+        "ups": 311,
+        "pv_total": 78628,
+        "interaction_score": 1988
+      },
+      {
+        "summary": "每天上线心情都变好了",
+        "app_title": "明日方舟",
+        "comments": 30,
+        "ups": 194,
+        "pv_total": 37255,
+        "interaction_score": 596
+      },
+      {
+        "summary": "你可以在我脸上画画😌😌😌",
+        "app_title": "光·遇",
+        "comments": 81,
+        "ups": 231,
+        "pv_total": 8054,
+        "interaction_score": 392
+      },
+      {
+        "summary": "退游纪念帖",
+        "app_title": "明日方舟",
+        "comments": 96,
+        "ups": 110,
+        "pv_total": 18305,
+        "interaction_score": 389
+      },
+      {
+        "summary": "拍卖中途掉出来了，不过也不错",
+        "app_title": "异环",
+        "comments": 15,
+        "ups": 178,
+        "pv_total": 17178,
+        "interaction_score": 364
+      },
+      {
+        "summary": "我没等你，只是我也没喜欢别人",
+        "app_title": "光·遇",
+        "comments": 12,
+        "ups": 218,
+        "pv_total": 2197,
+        "interaction_score": 251
+      },
+      {
+        "summary": "叭叭叭叭叭叭！",
+        "app_title": "光·遇",
+        "comments": 19,
+        "ups": 74,
+        "pv_total": 15363,
+        "interaction_score": 246
+      },
+      {
+        "summary": "Supercell 新游《Project R.I.S.E》8.19 Beta 测试，双端招募中",
+        "app_title": "Project R.I.S.E",
+        "comments": 8,
+        "ups": 126,
+        "pv_total": 4929,
+        "interaction_score": 183
+      },
+      {
+        "summary": "回归还是买个号",
+        "app_title": "明日方舟",
+        "comments": 28,
+        "ups": 30,
+        "pv_total": 12469,
+        "interaction_score": 182
+      },
+      {
+        "summary": "一开始进开封以为很繁荣。。",
+        "app_title": "燕云十六声",
+        "comments": 45,
+        "ups": 40,
+        "pv_total": 6591,
+        "interaction_score": 150
+      }
+    ]
+  },
+  "event_signals": [
+    {
+      "kind": "hot_topic",
+      "title": "卡厄思梦境换帅",
+      "score": 23539,
+      "evidence": "热榜第 7 名 / 浏览 23539",
+      "matched_games": []
+    },
+    {
+      "kind": "hot_topic",
+      "title": "白银之城技术测试招募开启",
+      "score": 16370,
+      "evidence": "热榜第 3 名 / 浏览 16370",
+      "matched_games": []
+    },
+    {
+      "kind": "hot_topic",
+      "title": "霓虹深渊2定档",
+      "score": 15722,
+      "evidence": "热榜第 9 名 / 浏览 15722",
+      "matched_games": []
+    },
+    {
+      "kind": "hot_topic",
+      "title": "妮姬新生庆典送185抽",
+      "score": 11600,
+      "evidence": "热榜第 4 名 / 浏览 11600",
+      "matched_games": []
+    },
+    {
+      "kind": "hot_topic",
+      "title": "三角洲行动二周年",
+      "score": 6270,
+      "evidence": "热榜第 1 名 / 浏览 6270",
+      "matched_games": []
+    },
+    {
+      "kind": "hot_topic",
+      "title": "星布谷地联动宇树科技",
+      "score": 3602,
+      "evidence": "热榜第 2 名 / 浏览 3602",
+      "matched_games": []
+    }
+  ],
+  "event_rules": {
+    "hot_board_pv": 10000,
+    "topic_dig_interaction": 500,
+    "hot_board_top_n": 3,
+    "delisted_game_label": "该游戏已下架"
+  },
+  "caliber": "平台级发现流（S4 话题热榜 + S5 发现页跨游戏流 + S6 话题下帖子），非单游戏社区；样本为推荐流采样，不代表全站全量"
+}

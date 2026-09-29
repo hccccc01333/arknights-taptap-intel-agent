@@ -3,10 +3,15 @@
   "name": "明日方舟",
   "app_id": 70253,
   "high_hours": 100.0,
-  "aliases": ["明日方舟", "方舟", "arknights"],
+  "aliases": [
+    "明日方舟",
+    "方舟",
+    "arknights"
+  ],
   "cross_channel": {
     "bili_keywords": "明日方舟",
     "weibo_uids": "6441486180"
   },
-  "notes": "高投入阈值 100h 为展示口径（明日方舟存量游戏语境），可用 --high-hours 覆盖；aliases 用于对照渠过滤。"
+  "notes": "高投入阈值 100h 为展示口径（明日方舟存量游戏语境），可用 --high-hours 覆盖；aliases 用于对照渠过滤。",
+  "data_dir": "02数据"
 }

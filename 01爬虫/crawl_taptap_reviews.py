@@ -24,6 +24,9 @@ from urllib.parse import urlencode, urljoin
 
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pii_hash import hash_user_id as pii_hash_user_id  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 CRAWLER_DIR = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "02数据"
@@ -114,8 +117,12 @@ def ts_to_cn_iso(ts: int | float | None) -> str:
 
 
 def hash_user_id(user_id: Any) -> str:
-    raw = str(user_id).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()[:16]
+    """委托给 01爬虫/pii_hash.py：加盐 HMAC，与社区/发现流通道共用同一套哈希。
+
+    （2026-09-29 改）原实现是裸 sha256 无盐截断——user_id 为 9 位数字，彩虹表可反推，
+    等于没脱敏。用户级分析（跨通道关联）必须先在哈希层站得住。
+    """
+    return pii_hash_user_id(user_id)
 
 
 def map_platform(device_raw: str) -> str:

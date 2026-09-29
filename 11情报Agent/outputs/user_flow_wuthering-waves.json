@@ -1,0 +1,897 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-29T16:44:56+08:00",
+  "game": "鸣潮",
+  "profile_key": "wuthering-waves",
+  "privacy": {
+    "mode": "aggregate_only",
+    "identifier": "加盐 HMAC-SHA256 截断 16 位（盐在 .env，不入库）",
+    "no_individual_records": true,
+    "note": "本报告只出聚合分布，不含任何单个用户标识或单用户轨迹；明文标识仅在本地原始数据域存在，不进产出"
+  },
+  "sample": {
+    "users": 594,
+    "posts": 4051,
+    "posts_excluded_as_noise": 1077,
+    "min_users_for_conclusion": 30,
+    "reliable": true,
+    "note": "足迹为 by-user 接口最新 N 条（每人上限由采集参数决定），非用户全量历史"
+  },
+  "A_flow": {
+    "focus_game": "鸣潮",
+    "top_flows": [
+      {
+        "from": "原神",
+        "to": "鸣潮",
+        "jumps": 24,
+        "users": 23
+      },
+      {
+        "from": "明日方舟：终末地",
+        "to": "鸣潮",
+        "jumps": 21,
+        "users": 21
+      },
+      {
+        "from": "绝区零",
+        "to": "鸣潮",
+        "jumps": 17,
+        "users": 17
+      },
+      {
+        "from": "异环",
+        "to": "鸣潮",
+        "jumps": 16,
+        "users": 16
+      },
+      {
+        "from": "鸣潮",
+        "to": "崩坏：星穹铁道",
+        "jumps": 15,
+        "users": 15
+      },
+      {
+        "from": "鸣潮",
+        "to": "原神",
+        "jumps": 13,
+        "users": 13
+      },
+      {
+        "from": "崩坏：星穹铁道",
+        "to": "鸣潮",
+        "jumps": 12,
+        "users": 12
+      },
+      {
+        "from": "鸣潮",
+        "to": "明日方舟：终末地",
+        "jumps": 12,
+        "users": 12
+      },
+      {
+        "from": "鸣潮",
+        "to": "异环",
+        "jumps": 10,
+        "users": 10
+      },
+      {
+        "from": "鸣潮",
+        "to": "绝区零",
+        "jumps": 10,
+        "users": 10
+      },
+      {
+        "from": "三角洲行动",
+        "to": "鸣潮",
+        "jumps": 9,
+        "users": 9
+      },
+      {
+        "from": "深空之眼",
+        "to": "鸣潮",
+        "jumps": 8,
+        "users": 8
+      }
+    ],
+    "into_focus": [
+      {
+        "from": "原神",
+        "jumps": 24,
+        "users": 23
+      },
+      {
+        "from": "明日方舟：终末地",
+        "jumps": 21,
+        "users": 21
+      },
+      {
+        "from": "绝区零",
+        "jumps": 17,
+        "users": 17
+      },
+      {
+        "from": "异环",
+        "jumps": 16,
+        "users": 16
+      },
+      {
+        "from": "崩坏：星穹铁道",
+        "jumps": 12,
+        "users": 12
+      },
+      {
+        "from": "三角洲行动",
+        "jumps": 9,
+        "users": 9
+      },
+      {
+        "from": "深空之眼",
+        "jumps": 8,
+        "users": 8
+      },
+      {
+        "from": "恋与深空",
+        "jumps": 7,
+        "users": 7
+      },
+      {
+        "from": "卡厄思梦境",
+        "jumps": 6,
+        "users": 6
+      },
+      {
+        "from": "战双帕弥什",
+        "jumps": 6,
+        "users": 6
+      }
+    ],
+    "out_of_focus": [
+      {
+        "to": "崩坏：星穹铁道",
+        "jumps": 15,
+        "users": 15
+      },
+      {
+        "to": "原神",
+        "jumps": 13,
+        "users": 13
+      },
+      {
+        "to": "明日方舟：终末地",
+        "jumps": 12,
+        "users": 12
+      },
+      {
+        "to": "异环",
+        "jumps": 10,
+        "users": 10
+      },
+      {
+        "to": "绝区零",
+        "jumps": 10,
+        "users": 10
+      },
+      {
+        "to": "二重螺旋",
+        "jumps": 5,
+        "users": 5
+      },
+      {
+        "to": "王者荣耀",
+        "jumps": 4,
+        "users": 4
+      },
+      {
+        "to": "火影忍者",
+        "jumps": 4,
+        "users": 4
+      },
+      {
+        "to": "辉烬",
+        "jumps": 4,
+        "users": 4
+      },
+      {
+        "to": "洛克王国：世界",
+        "jumps": 4,
+        "users": 4
+      }
+    ]
+  },
+  "B_activity": {
+    "monthly": [
+      {
+        "month": "2016-10",
+        "posts": 2,
+        "active_users": 1
+      },
+      {
+        "month": "2016-11",
+        "posts": 2,
+        "active_users": 1
+      },
+      {
+        "month": "2017-01",
+        "posts": 1,
+        "active_users": 1
+      },
+      {
+        "month": "2017-03",
+        "posts": 1,
+        "active_users": 1
+      },
+      {
+        "month": "2017-04",
+        "posts": 2,
+        "active_users": 2
+      },
+      {
+        "month": "2017-06",
+        "posts": 4,
+        "active_users": 1
+      },
+      {
+        "month": "2017-07",
+        "posts": 2,
+        "active_users": 1
+      },
+      {
+        "month": "2017-08",
+        "posts": 1,
+        "active_users": 1
+      },
+      {
+        "month": "2017-09",
+        "posts": 4,
+        "active_users": 3
+      },
+      {
+        "month": "2017-10",
+        "posts": 5,
+        "active_users": 4
+      },
+      {
+        "month": "2017-11",
+        "posts": 4,
+        "active_users": 3
+      },
+      {
+        "month": "2017-12",
+        "posts": 7,
+        "active_users": 4
+      },
+      {
+        "month": "2018-01",
+        "posts": 3,
+        "active_users": 2
+      },
+      {
+        "month": "2018-02",
+        "posts": 7,
+        "active_users": 7
+      },
+      {
+        "month": "2018-03",
+        "posts": 3,
+        "active_users": 1
+      },
+      {
+        "month": "2018-04",
+        "posts": 1,
+        "active_users": 1
+      },
+      {
+        "month": "2018-05",
+        "posts": 4,
+        "active_users": 4
+      },
+      {
+        "month": "2018-06",
+        "posts": 3,
+        "active_users": 3
+      },
+      {
+        "month": "2018-07",
+        "posts": 5,
+        "active_users": 3
+      },
+      {
+        "month": "2018-08",
+        "posts": 6,
+        "active_users": 2
+      },
+      {
+        "month": "2018-09",
+        "posts": 3,
+        "active_users": 2
+      },
+      {
+        "month": "2018-10",
+        "posts": 1,
+        "active_users": 1
+      },
+      {
+        "month": "2018-11",
+        "posts": 6,
+        "active_users": 2
+      },
+      {
+        "month": "2018-12",
+        "posts": 5,
+        "active_users": 5
+      },
+      {
+        "month": "2019-01",
+        "posts": 2,
+        "active_users": 2
+      },
+      {
+        "month": "2019-02",
+        "posts": 2,
+        "active_users": 2
+      },
+      {
+        "month": "2019-03",
+        "posts": 5,
+        "active_users": 3
+      },
+      {
+        "month": "2019-04",
+        "posts": 2,
+        "active_users": 2
+      },
+      {
+        "month": "2019-05",
+        "posts": 8,
+        "active_users": 4
+      },
+      {
+        "month": "2019-06",
+        "posts": 4,
+        "active_users": 4
+      },
+      {
+        "month": "2019-07",
+        "posts": 6,
+        "active_users": 4
+      },
+      {
+        "month": "2019-08",
+        "posts": 10,
+        "active_users": 7
+      },
+      {
+        "month": "2019-09",
+        "posts": 9,
+        "active_users": 2
+      },
+      {
+        "month": "2019-10",
+        "posts": 3,
+        "active_users": 2
+      },
+      {
+        "month": "2019-11",
+        "posts": 2,
+        "active_users": 2
+      },
+      {
+        "month": "2019-12",
+        "posts": 4,
+        "active_users": 3
+      },
+      {
+        "month": "2020-01",
+        "posts": 7,
+        "active_users": 4
+      },
+      {
+        "month": "2020-02",
+        "posts": 14,
+        "active_users": 8
+      },
+      {
+        "month": "2020-03",
+        "posts": 13,
+        "active_users": 6
+      },
+      {
+        "month": "2020-04",
+        "posts": 20,
+        "active_users": 5
+      },
+      {
+        "month": "2020-05",
+        "posts": 9,
+        "active_users": 6
+      },
+      {
+        "month": "2020-06",
+        "posts": 6,
+        "active_users": 3
+      },
+      {
+        "month": "2020-07",
+        "posts": 16,
+        "active_users": 5
+      },
+      {
+        "month": "2020-08",
+        "posts": 32,
+        "active_users": 12
+      },
+      {
+        "month": "2020-09",
+        "posts": 10,
+        "active_users": 7
+      },
+      {
+        "month": "2020-10",
+        "posts": 11,
+        "active_users": 10
+      },
+      {
+        "month": "2020-11",
+        "posts": 4,
+        "active_users": 4
+      },
+      {
+        "month": "2020-12",
+        "posts": 18,
+        "active_users": 10
+      },
+      {
+        "month": "2021-01",
+        "posts": 11,
+        "active_users": 9
+      },
+      {
+        "month": "2021-02",
+        "posts": 11,
+        "active_users": 6
+      },
+      {
+        "month": "2021-03",
+        "posts": 2,
+        "active_users": 2
+      },
+      {
+        "month": "2021-04",
+        "posts": 14,
+        "active_users": 10
+      },
+      {
+        "month": "2021-05",
+        "posts": 11,
+        "active_users": 8
+      },
+      {
+        "month": "2021-06",
+        "posts": 22,
+        "active_users": 11
+      },
+      {
+        "month": "2021-07",
+        "posts": 19,
+        "active_users": 11
+      },
+      {
+        "month": "2021-08",
+        "posts": 14,
+        "active_users": 12
+      },
+      {
+        "month": "2021-09",
+        "posts": 15,
+        "active_users": 9
+      },
+      {
+        "month": "2021-10",
+        "posts": 18,
+        "active_users": 6
+      },
+      {
+        "month": "2021-11",
+        "posts": 10,
+        "active_users": 7
+      },
+      {
+        "month": "2021-12",
+        "posts": 21,
+        "active_users": 12
+      },
+      {
+        "month": "2022-01",
+        "posts": 15,
+        "active_users": 12
+      },
+      {
+        "month": "2022-02",
+        "posts": 7,
+        "active_users": 6
+      },
+      {
+        "month": "2022-03",
+        "posts": 17,
+        "active_users": 11
+      },
+      {
+        "month": "2022-04",
+        "posts": 17,
+        "active_users": 10
+      },
+      {
+        "month": "2022-05",
+        "posts": 16,
+        "active_users": 15
+      },
+      {
+        "month": "2022-06",
+        "posts": 31,
+        "active_users": 15
+      },
+      {
+        "month": "2022-07",
+        "posts": 31,
+        "active_users": 17
+      },
+      {
+        "month": "2022-08",
+        "posts": 20,
+        "active_users": 15
+      },
+      {
+        "month": "2022-09",
+        "posts": 10,
+        "active_users": 7
+      },
+      {
+        "month": "2022-10",
+        "posts": 20,
+        "active_users": 18
+      },
+      {
+        "month": "2022-11",
+        "posts": 24,
+        "active_users": 21
+      },
+      {
+        "month": "2022-12",
+        "posts": 16,
+        "active_users": 11
+      },
+      {
+        "month": "2023-01",
+        "posts": 26,
+        "active_users": 14
+      },
+      {
+        "month": "2023-02",
+        "posts": 6,
+        "active_users": 6
+      },
+      {
+        "month": "2023-03",
+        "posts": 14,
+        "active_users": 12
+      },
+      {
+        "month": "2023-04",
+        "posts": 15,
+        "active_users": 12
+      },
+      {
+        "month": "2023-05",
+        "posts": 20,
+        "active_users": 16
+      },
+      {
+        "month": "2023-06",
+        "posts": 29,
+        "active_users": 20
+      },
+      {
+        "month": "2023-07",
+        "posts": 28,
+        "active_users": 16
+      },
+      {
+        "month": "2023-08",
+        "posts": 31,
+        "active_users": 24
+      },
+      {
+        "month": "2023-09",
+        "posts": 11,
+        "active_users": 9
+      },
+      {
+        "month": "2023-10",
+        "posts": 16,
+        "active_users": 12
+      },
+      {
+        "month": "2023-11",
+        "posts": 19,
+        "active_users": 16
+      },
+      {
+        "month": "2023-12",
+        "posts": 31,
+        "active_users": 25
+      },
+      {
+        "month": "2024-01",
+        "posts": 34,
+        "active_users": 23
+      },
+      {
+        "month": "2024-02",
+        "posts": 28,
+        "active_users": 21
+      },
+      {
+        "month": "2024-03",
+        "posts": 34,
+        "active_users": 18
+      },
+      {
+        "month": "2024-04",
+        "posts": 35,
+        "active_users": 21
+      },
+      {
+        "month": "2024-05",
+        "posts": 57,
+        "active_users": 37
+      },
+      {
+        "month": "2024-06",
+        "posts": 63,
+        "active_users": 36
+      },
+      {
+        "month": "2024-07",
+        "posts": 99,
+        "active_users": 55
+      },
+      {
+        "month": "2024-08",
+        "posts": 70,
+        "active_users": 46
+      },
+      {
+        "month": "2024-09",
+        "posts": 55,
+        "active_users": 38
+      },
+      {
+        "month": "2024-10",
+        "posts": 38,
+        "active_users": 24
+      },
+      {
+        "month": "2024-11",
+        "posts": 19,
+        "active_users": 17
+      },
+      {
+        "month": "2024-12",
+        "posts": 52,
+        "active_users": 35
+      },
+      {
+        "month": "2025-01",
+        "posts": 40,
+        "active_users": 28
+      },
+      {
+        "month": "2025-02",
+        "posts": 49,
+        "active_users": 35
+      },
+      {
+        "month": "2025-03",
+        "posts": 48,
+        "active_users": 34
+      },
+      {
+        "month": "2025-04",
+        "posts": 67,
+        "active_users": 36
+      },
+      {
+        "month": "2025-05",
+        "posts": 65,
+        "active_users": 40
+      },
+      {
+        "month": "2025-06",
+        "posts": 58,
+        "active_users": 42
+      },
+      {
+        "month": "2025-07",
+        "posts": 121,
+        "active_users": 56
+      },
+      {
+        "month": "2025-08",
+        "posts": 93,
+        "active_users": 52
+      },
+      {
+        "month": "2025-09",
+        "posts": 43,
+        "active_users": 33
+      },
+      {
+        "month": "2025-10",
+        "posts": 76,
+        "active_users": 49
+      },
+      {
+        "month": "2025-11",
+        "posts": 60,
+        "active_users": 48
+      },
+      {
+        "month": "2025-12",
+        "posts": 71,
+        "active_users": 47
+      },
+      {
+        "month": "2026-01",
+        "posts": 96,
+        "active_users": 72
+      },
+      {
+        "month": "2026-02",
+        "posts": 84,
+        "active_users": 54
+      },
+      {
+        "month": "2026-03",
+        "posts": 57,
+        "active_users": 33
+      },
+      {
+        "month": "2026-04",
+        "posts": 98,
+        "active_users": 63
+      },
+      {
+        "month": "2026-05",
+        "posts": 112,
+        "active_users": 65
+      },
+      {
+        "month": "2026-06",
+        "posts": 123,
+        "active_users": 70
+      },
+      {
+        "month": "2026-07",
+        "posts": 422,
+        "active_users": 244
+      },
+      {
+        "month": "2026-08",
+        "posts": 431,
+        "active_users": 233
+      },
+      {
+        "month": "2026-09",
+        "posts": 316,
+        "active_users": 130
+      }
+    ],
+    "last_stop_distribution": [
+      {
+        "game": "鸣潮",
+        "users": 407
+      },
+      {
+        "game": "崩坏：星穹铁道",
+        "users": 15
+      },
+      {
+        "game": "异环",
+        "users": 15
+      },
+      {
+        "game": "明日方舟：终末地",
+        "users": 12
+      },
+      {
+        "game": "原神",
+        "users": 8
+      },
+      {
+        "game": "诡秘之主",
+        "users": 7
+      },
+      {
+        "game": "洛克王国：世界",
+        "users": 7
+      },
+      {
+        "game": "火影忍者",
+        "users": 5
+      },
+      {
+        "game": "三角洲行动",
+        "users": 5
+      },
+      {
+        "game": "绝区零",
+        "users": 4
+      }
+    ]
+  },
+  "C_investment": {
+    "matched_users": 594,
+    "unmatched_note": "评分区有评分但无社区足迹的用户不计入本组（无法观测流动）",
+    "high_hours_threshold": 100.0,
+    "high": {
+      "users": 290,
+      "moved_out_users": 110,
+      "moved_out_rate_pp": 37.93,
+      "came_from_other_users": 179,
+      "came_from_other_rate_pp": 61.72,
+      "last_stop_is_focus_users": 180,
+      "last_stop_is_focus_rate_pp": 62.07,
+      "top_destinations": [
+        {
+          "game": "明日方舟：终末地",
+          "jumps": 26
+        },
+        {
+          "game": "崩坏：星穹铁道",
+          "jumps": 20
+        },
+        {
+          "game": "异环",
+          "jumps": 19
+        },
+        {
+          "game": "鸣潮",
+          "jumps": 15
+        },
+        {
+          "game": "绝区零",
+          "jumps": 12
+        },
+        {
+          "game": "原神",
+          "jumps": 10
+        },
+        {
+          "game": "洛克王国：世界",
+          "jumps": 9
+        },
+        {
+          "game": "二重螺旋",
+          "jumps": 8
+        }
+      ]
+    },
+    "low": {
+      "users": 304,
+      "moved_out_users": 75,
+      "moved_out_rate_pp": 24.67,
+      "came_from_other_users": 147,
+      "came_from_other_rate_pp": 48.36,
+      "last_stop_is_focus_users": 227,
+      "last_stop_is_focus_rate_pp": 74.67
+    },
+    "overall_weighted": {
+      "pool_high": 665,
+      "pool_low": 2344,
+      "moved_out_rate_pp": 27.6,
+      "naive_unweighted_pp": 31.14
+    },
+    "note": "高投入 = 评分区 played_hours ≥ 阈值（游戏档案 high_hours）；关联靠加盐哈希，故只有既打过分又有社区发帖的人才进本组"
+  },
+  "caliber": "用户社区足迹（feed/v7/by-user 最新 N 条）→ 跨游戏流向；非全站全量，下架游戏与无来源帖已排除主矩阵但单独计数"
+}

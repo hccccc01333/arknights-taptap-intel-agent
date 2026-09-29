@@ -1,0 +1,283 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-29T10:04:09+08:00",
+  "game": "鸣潮",
+  "totals": {
+    "posts": 44,
+    "loaded_comments": 345,
+    "comments_declared": 6303,
+    "supports": 0,
+    "pv_total": 658917,
+    "zero_comment_posts": 12
+  },
+  "hot_posts": [
+    {
+      "moment_id": "279221034672983071",
+      "summary": "在能往任何方向奔跑的世界里，\n石造剑，收服幻象，\n亲手斩断灾难的轮回。\n*早期开发阶段，帧数品质感人。",
+      "date": "2022-05-27",
+      "source_type": "elite",
+      "interaction_score": 5139,
+      "comments": 1168,
+      "supports": 0,
+      "pv_total": 146149
+    },
+    {
+      "moment_id": "300654725357896199",
+      "summary": "欢迎来到《鸣潮》为主题的TapTap论坛\n当您进入本论坛，将视为已阅读本版规，请遵守相关条例规定。如有违反，管理组会对相关行为进行移除和禁言处理。\n本版规衍生于",
+      "date": "2022-07-25",
+      "source_type": "elite",
+      "interaction_score": 4991,
+      "comments": 1775,
+      "supports": 0,
+      "pv_total": 245877
+    },
+    {
+      "moment_id": "398604240001436113",
+      "summary": "2021年之后，几乎所有手游公司意识到同一个结论：要做开放世界，手机上的开放世界才是下阶段市场入场门票。所以，在那段时间，几乎所有游戏都在往开放世界这个标签上蹭",
+      "date": "2023-04-21",
+      "source_type": "elite",
+      "interaction_score": 2576,
+      "comments": 454,
+      "supports": 0,
+      "pv_total": 65621
+    },
+    {
+      "moment_id": "294184154298320488",
+      "summary": "用8个小时肝通了技术性测试，我们做了个6分钟的视频，讲讲这款开放世界动作游戏的亮点。\n0.5测仅是一个框架，期待游戏今后更多的改进和打磨~",
+      "date": "2022-07-07",
+      "source_type": "elite",
+      "interaction_score": 2549,
+      "comments": 994,
+      "supports": 0,
+      "pv_total": 0
+    },
+    {
+      "moment_id": "389379774989995457",
+      "summary": "IGN发布了《鸣潮》最新的11分钟实机演示，展示了大世界、攀爬、战斗、怪物等不同部分，比起上测，游戏内容变得更为丰富。\n国服将在4月20日开测，招募\n飞行、攀爬",
+      "date": "2023-03-27",
+      "source_type": "elite",
+      "interaction_score": 2480,
+      "comments": 827,
+      "supports": 0,
+      "pv_total": 48797
+    },
+    {
+      "moment_id": "293110573564953229",
+      "summary": "作为一款二次元开放世界游戏，库洛《鸣潮》今天的首次开测着实引来了不少关注，我们也是11点就准时登录开打。尽管技术性测试离正式版本的内容还有不少距离，但还是能初步",
+      "date": "2022-07-04",
+      "source_type": "elite",
+      "interaction_score": 1723,
+      "comments": 354,
+      "supports": 0,
+      "pv_total": 75805
+    },
+    {
+      "moment_id": "850475240155777039",
+      "summary": "怎么现在福利反而不如米游了呢🤔",
+      "date": "2026-09-19",
+      "source_type": "feed",
+      "interaction_score": 319,
+      "comments": 164,
+      "supports": 0,
+      "pv_total": 10255
+    },
+    {
+      "moment_id": "819637809156457673",
+      "summary": "#鸣潮 #鸣潮遗音扶剑荡梦而歌 \n鸢鸟起，轻点流云。水中鲤，游遍霞锦。\n手执玄机引流电，月下旋身赴此间 。\n《鸣潮》3.5版本「遗音扶剑，荡梦而歌」将于7月10",
+      "date": "2026-06-26",
+      "source_type": "top_feed",
+      "interaction_score": 311,
+      "comments": 25,
+      "supports": 0,
+      "pv_total": 6545
+    },
+    {
+      "moment_id": "573950946258715084",
+      "summary": "注：老爷爷只能买一次\n但是每天可以在祈愿摊前领取\n制作不易😢\n能否给孩子一个赞＋关注💕\n本攻略三小时基本可以拿完活动奖励\n不着急的话👌\n也可以点个收藏防止最后一",
+      "date": "2024-08-17",
+      "source_type": "elite",
+      "interaction_score": 291,
+      "comments": 42,
+      "supports": 0,
+      "pv_total": 5949
+    },
+    {
+      "moment_id": "844503360877887598",
+      "summary": "库洛注册新商标《循光尤里卡》，疑为虚幻5引擎打造的原创IP新游引发玩家猜测\n 曾开发过《战双帕弥什》、《鸣潮》等知名游戏的广州库洛科技有限公司相关话题近期再次引",
+      "date": "2026-09-03",
+      "source_type": "feed",
+      "interaction_score": 244,
+      "comments": 81,
+      "supports": 0,
+      "pv_total": 10436
+    }
+  ],
+  "hot_posts_recent_30d": [
+    {
+      "moment_id": "850475240155777039",
+      "summary": "怎么现在福利反而不如米游了呢🤔",
+      "date": "2026-09-19",
+      "source_type": "feed",
+      "interaction_score": 319,
+      "comments": 164,
+      "supports": 0,
+      "pv_total": 10255
+    },
+    {
+      "moment_id": "844503360877887598",
+      "summary": "库洛注册新商标《循光尤里卡》，疑为虚幻5引擎打造的原创IP新游引发玩家猜测\n 曾开发过《战双帕弥什》、《鸣潮》等知名游戏的广州库洛科技有限公司相关话题近期再次引",
+      "date": "2026-09-03",
+      "source_type": "feed",
+      "interaction_score": 244,
+      "comments": 81,
+      "supports": 0,
+      "pv_total": 10436
+    },
+    {
+      "moment_id": "850746218446326576",
+      "summary": "昨晚，鸣潮公布3.7版本的累充活动，目前在各大社区的讨论度很高。这次活动按累计充值金额分档发放奖励，从30档一路排到2200档，最高档给的是云山藏景座。\n引发争",
+      "date": "2026-09-20",
+      "source_type": "feed",
+      "interaction_score": 143,
+      "comments": 67,
+      "supports": 0,
+      "pv_total": 4149
+    },
+    {
+      "moment_id": "852687680876577810",
+      "summary": "翻来覆去瞅了好几遍造型\n越看越觉得这套穿搭眼熟\n有没有知道的朋友来唠两句呀～\n#鸣潮 #鸣潮创作激励 #鸣潮爱弥斯",
+      "date": "2026-09-25",
+      "source_type": "feed",
+      "interaction_score": 78,
+      "comments": 11,
+      "supports": 0,
+      "pv_total": 1080
+    },
+    {
+      "moment_id": "850721026797997078",
+      "summary": "昨晚没看前瞻，今天一看前瞻这累充，这回旋镖打的太疼了\n之前玩星铁退坑的时候就是累充2000昔涟回忆才有你，好像有爱弥斯的事，328就能有爱弥斯摩托皮和救世主玩偶",
+      "date": "2026-09-20",
+      "source_type": "feed",
+      "interaction_score": 51,
+      "comments": 20,
+      "supports": 0,
+      "pv_total": 1278
+    },
+    {
+      "moment_id": "852598664370063659",
+      "summary": "#鸣潮创作激励 #二创发电机 #鸣潮 中秋快乐捏\n紫薯布丁紫薯布丁紫薯布丁紫薯布丁",
+      "date": "2026-09-25",
+      "source_type": "feed",
+      "interaction_score": 50,
+      "comments": 10,
+      "supports": 0,
+      "pv_total": 138
+    },
+    {
+      "moment_id": "851285297193813678",
+      "summary": "#鸣潮新版本福利引热议\n可以走，但别骂，现在骂不动了，库洛扫码的东西控制评论，加上玩家内斗，现在不是1.0，2.0了，根本没用，1.0，2.0还有正常人，现在已",
+      "date": "2026-09-22",
+      "source_type": "feed",
+      "interaction_score": 38,
+      "comments": 24,
+      "supports": 0,
+      "pv_total": 787
+    },
+    {
+      "moment_id": "853335772542010133",
+      "summary": "#鸣潮创作激励 #鸣潮 #鸣潮清宵",
+      "date": "2026-09-27",
+      "source_type": "feed",
+      "interaction_score": 27,
+      "comments": 0,
+      "supports": 0,
+      "pv_total": 148
+    },
+    {
+      "moment_id": "853336602250840472",
+      "summary": "RT",
+      "date": "2026-09-27",
+      "source_type": "feed",
+      "interaction_score": 10,
+      "comments": 9,
+      "supports": 0,
+      "pv_total": 147
+    },
+    {
+      "moment_id": "852673579030941087",
+      "summary": "大佬求助",
+      "date": "2026-09-25",
+      "source_type": "feed",
+      "interaction_score": 5,
+      "comments": 3,
+      "supports": 0,
+      "pv_total": 124
+    }
+  ],
+  "spam_heuristic": {
+    "note": "启发式疑似，需人工抽检（官方活动打卡可能误中）",
+    "suspected_posts": 0,
+    "suspected_rate_pp": 0.0,
+    "suspected_comments": 0
+  },
+  "daily_posts_14d": [
+    {
+      "date": "2026-09-16",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-17",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-18",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-19",
+      "posts": 1
+    },
+    {
+      "date": "2026-09-20",
+      "posts": 2
+    },
+    {
+      "date": "2026-09-21",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-22",
+      "posts": 1
+    },
+    {
+      "date": "2026-09-23",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-24",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-25",
+      "posts": 3
+    },
+    {
+      "date": "2026-09-26",
+      "posts": 0
+    },
+    {
+      "date": "2026-09-27",
+      "posts": 5
+    },
+    {
+      "date": "2026-09-28",
+      "posts": 8
+    },
+    {
+      "date": "2026-09-29",
+      "posts": 6
+    }
+  ],
+  "caliber": "社区话题流（feed 帖子 + 热评 + 帖子评论），非评分区评论；与评分层分析口径独立",
+  "profile_key": "wuthering-waves"
+}
