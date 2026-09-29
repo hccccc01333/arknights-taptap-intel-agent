@@ -39,10 +39,41 @@ RISK_SCRIPT = LAB / "risk_insight.py"
 ANOMALY_SCRIPT = LAB / "anomaly_lite.py"  # 零依赖感知层；完整版见 10分析实验室（需 pandas）
 ANOMALY_JSON = LAB / "outputs" / "anomaly_lite.json"
 RISK_JSON = LAB / "outputs" / "risk_insight.json"
+# 平台级发现流（S4/S5/S6）：由 platform_insight.py 产出，原始数据含社区文本不入库，
+# 故这里只读已聚合的 facts——文件不存在即显式降级，绝不临时补跑爬虫。
+PLATFORM_JSON = LAB / "outputs" / "platform_insight.json"
 REPORT_DIR = LAB / "reports"
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DECISION_SCHEMA = {"mode": "deep_dive|routine", "focus_topics": ["..."], "rationale": "<=60字"}
+
+# DeepSeek 模型分层路由（2026-09-29 拍板，同日按 benchmark 修订）
+#
+# 关键事实（推翻了最初的 Flash/Pro 分工假设）：
+#   · V4.1-Flash 在 agentic / coding / tool-use 上**实测强于** V4-Pro
+#     （Terminal-Bench 2.1: 90.6 vs 87.9；DeepSWE: 74.2 vs 62.7；Automation-Bench: 54.8 vs 43.2）
+#   · V4-Pro 仅在**事实召回 / 长上下文 / 多语知识**上领先
+#     （SimpleQA-Verified 55.2 vs 42.3；LongBench-V2 51.5 vs 45.2；MultiLoKo 50.9 vs 45.5）
+#   · 因此**真正的分层维度不是 Flash/Pro，而是 thinking 的开关与档位**。
+#
+# 所以路由定为：
+#   判别式高频（热点识别 / 相关性判断 / 素材抽取 / 简报执笔）
+#       → Flash + **thinking 关闭**（思维链对分类无用，且 thinking token 按 output 计费）
+#   生成式低频（增长创意生成，最终交付物）
+#       → Flash + **thinking 开启** + reasoning_effort=high/max
+#   Pro 只在需要密集世界知识/超长上下文时才考虑，且它随时可能被再次下线。
+MODEL_FLASH = os.environ.get("DEEPSEEK_MODEL_FLASH", "deepseek-flash")
+MODEL_PRO = os.environ.get("DEEPSEEK_MODEL_PRO", "deepseek-v4-pro")
+
+# ⚠ V4.1-Flash **默认开启 thinking**。判别式任务必须显式关闭，否则白付思维链的 token。
+# ⚠ 另一个坑：thinking 开启时，服务端会忽略 temperature / top_p / presence_penalty。
+#    所以「要确定性输出」的任务（如决策）必须关 thinking，temperature 才生效。
+THINKING_OFF = {"type": "disabled"}
+THINKING_ON = {"type": "enabled"}
+REASONING_FOR_CREATIVE = os.environ.get("DEEPSEEK_REASONING_CREATIVE", "high")
+
+# ⚠ 退役警示：deepseek-chat / deepseek-reasoner 已于 2026-07-24 15:59 UTC 退役，
+#    且无静默回退——调用直接报错。 codebase 内禁止再出现这两个模型名。
 
 
 # ---------------------------------------------------------------- Step 1 感知
@@ -83,6 +114,48 @@ def log_traceback(e: Exception, tool: str) -> None:
     with (LOG_DIR / "agent_run.log").open("a", encoding="utf-8") as f:
         f.write(f"\n[{datetime.now(TZ).isoformat(timespec='seconds')}] {tool} failed\n")
         f.write(traceback.format_exc())
+
+
+def load_platform(max_age_hours: int = 48) -> dict[str, Any]:
+    """平台侧 facts（S4/S5/S6）：有则用，无则显式降级——不静默编造。
+
+    只做「命中已建档游戏」的关联，数值一律来自 platform_insight.json（代码算）。
+    超过 max_age_hours 标 stale：简报里要写明是旧快照，不能当今日实时。
+    """
+    if not PLATFORM_JSON.exists():
+        return {
+            "available": False,
+            "reason": "未生成平台发现流数据（需先跑 crawl_taptap_discovery.py + platform_insight.py）",
+        }
+    try:
+        pj = json.loads(PLATFORM_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False, "reason": "平台发现流 facts 解析失败，已降级"}
+    sigs = pj.get("event_signals") or []
+    hits = [s for s in sigs if s.get("matched_games")]
+    stale = True
+    gen = pj.get("generated_at") or ""
+    try:
+        gt = datetime.fromisoformat(gen)
+        stale = (datetime.now(TZ) - gt) > timedelta(hours=max_age_hours)
+    except (ValueError, TypeError):
+        pass
+    return {
+        "available": True,
+        "generated_at": gen,
+        "stale": stale,
+        "inputs": pj.get("inputs") or {},
+        "top_signals": [
+            {"kind": s.get("kind"), "title": s.get("title"), "score": s.get("score"),
+             "evidence": s.get("evidence"), "matched_games": s.get("matched_games") or []}
+            for s in sigs[:3]
+        ],
+        "tracked_game_hits": [
+            {"title": s.get("title"), "games": s.get("matched_games"),
+             "evidence": s.get("evidence")}
+            for s in hits[:3]
+        ],
+    }
 
 
 def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
@@ -164,6 +237,8 @@ def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
             if anomaly
             else None
         ),
+        # 平台侧（S4/S5/S6）为**可选维度**：无数据不影响主链，只在简报里显式说明
+        "platform": load_platform(),
     }
     return facts
 
@@ -215,12 +290,15 @@ def llm_decision(facts: dict[str, Any], api_key: str) -> dict[str, Any] | None:
         "判断依据：异动是否统计显著、高风险主题是否聚集。数字一律引用 facts，不得编造。"
     )
     body = {
-        "model": "deepseek-chat",
+        "model": MODEL_FLASH,
         "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
         ],
         "response_format": {"type": "json_object"},
+        # 判别式任务：关 thinking（思维链对分类无用，且按 output 计费）；
+        # 关掉后 temperature=0.2 才真正生效（thinking 模式下服务端会忽略它）
+        "thinking": THINKING_OFF,
         "temperature": 0.2,
         "max_tokens": 200,
     }
@@ -288,7 +366,7 @@ def qualitative_text(facts: dict[str, Any], decision: dict[str, Any], api_key: s
     an = facts.get("anomaly") or {}
     if api_key and decision.get("decider") == "llm":
         body = {
-            "model": "deepseek-chat",
+            "model": MODEL_FLASH,
             "messages": [
                 {
                     "role": "system",
@@ -305,6 +383,7 @@ def qualitative_text(facts: dict[str, Any], decision: dict[str, Any], api_key: s
                     ),
                 },
             ],
+            "thinking": THINKING_OFF,
             "temperature": 0.3,
             "max_tokens": 300,
         }
@@ -399,12 +478,48 @@ def render_brief(action: dict[str, Any], qual: str) -> str:
         for s in dd.get("disguised_samples", []):
             hours = f"{s['played_hours']:.0f}h" if s.get("played_hours") is not None else "—"
             lines.append(f"- `{s['review_id']}` {s['topic']} · {hours} · {s['rhetoric']}：{s['text_excerpt']}")
+    pf = f.get("platform") or {}
+    if pf.get("available"):
+        lines += [
+            "",
+            "## 平台侧发现流（S4 话题热榜 / S5 发现页 / S6 话题下帖子）",
+            "",
+            f"> 快照生成于 {pf.get('generated_at') or '—'}"
+            + ("；**已过期**（超过 48h，非今日实时）" if pf.get("stale") else ""),
+            "",
+            f"- 样本：话题 {pf.get('inputs', {}).get('hot_hashtags')} 条 / 帖子 "
+            f"{pf.get('inputs', {}).get('posts')} 条（发现页 {pf.get('inputs', {}).get('posts_discover')}"
+            f" · 话题下 {pf.get('inputs', {}).get('posts_hashtag')}）/ 评论 "
+            f"{pf.get('inputs', {}).get('loaded_comments')} 条",
+            "",
+            "| 事件信号 | 类型 | 热度 | 依据 | 命中建档游戏 |",
+            "|----------|------|------|------|--------------|",
+        ]
+        for s in pf.get("top_signals", []):
+            mg = "/".join(s.get("matched_games") or []) or "—"
+            lines.append(
+                f"| {s.get('title')} | {s.get('kind')} | {s.get('score')} | {s.get('evidence')} | {mg} |"
+            )
+        if pf.get("tracked_game_hits"):
+            lines += ["", "**命中已建档游戏的平台事件**（建议重点看）：", ""]
+            for h in pf["tracked_game_hits"]:
+                lines.append(f"- {h['title']}（{'/'.join(h['games'])}）：{h['evidence']}")
+        else:
+            lines += ["", "本次快照无平台事件命中已建档游戏。"]
+    else:
+        lines += [
+            "",
+            "## 平台侧发现流",
+            "",
+            f"- 不可用：{pf.get('reason') or '未知原因'}（显式标注，不估算）",
+        ]
     lines += [
         "",
         "## 边界",
         "",
         "- 舆情侧风险信号，非流失预测；数字全部来自 facts JSON（代码计算）。",
         "- 传播维度数据不可用时显式标注，不估算。",
+        "- 平台侧为可选维度，无数据时显式降级；发现流是推荐流采样，不代表全站全量。",
         "",
         "---",
         "",

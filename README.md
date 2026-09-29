@@ -10,15 +10,19 @@
 | 项 | 内容 |
 |----|------|
 | 主链 | TapTap《明日方舟》评价（app_id=70253） |
+| 数据面 | 四条通道分目录：评分区评论 / 单游戏社区（帖子+热评）/ 平台级发现流（话题热榜→话题下帖子）/ 用户社区足迹（跨游戏流向） |
+| 隐私 | 用户标识加盐哈希（HMAC-SHA256，盐不入库）；分析层**只出聚合**，产出不含单个用户标识或轨迹 |
 | 情报 Agent | 感知 → 决策（规则兜底 + LLM 可选）→ 行动 → 简报；显著异动触发深挖 |
 | 风险分层 | 舆情侧流失风险信号：高投入不满 / 高投入不推荐 / 修辞伪装负向 / 可行动差评 |
 | 标注 | v1.4 两段式：字面 / 意图 / 主情绪 / 修辞分通道 |
 | 游戏档案 | [`games/<key>.json`](./games/README.md) 驱动 app_id / 阈值 / 等价名 / 跨渠关键词——换档案即换游戏 |
 | Skills | [`skills/`](./skills/README.md)：5 个 Agent Skills |
+| 架构 | 四层：数据 / 管线 / Agent 控制 / 支撑。已完成部分落在**数据层 + 管线感知侧 + 支撑层**；**控制层仍是 v1 流水线**，LangGraph v2 未动工——模块级位置对照见 [架构设计 §1.1](./docs/Agent-v2-架构设计.md) |
+| 判据 | 热点是否值得社区做话题，用「**社区可发酵度**」判断（`ferment_judge`），不是「是否属于我建档的游戏」——实测旧判据命中 0/10，新判据认为 5/10 可发酵 |
 
 > 社交三渠为限量对照；降级语料会在 facts / 看板标明，不作全网 KPI。
 
-**快速入口：** [打开看板](./05展示页/index.html) · [每日情报简报](./11情报Agent/reports/daily_intel_latest.md) · [方法论](./docs/方法论.md) · [构建说明](./docs/构建说明.md)
+**快速入口：** [打开看板](./05展示页/index.html) · [每日情报简报](./11情报Agent/reports/daily_intel_latest.md) · [Agent v2 架构设计](./docs/Agent-v2-架构设计.md) · [方法论](./docs/方法论.md) · [构建说明](./docs/构建说明.md)
 
 ---
 
@@ -43,7 +47,7 @@
 | 情报 Agent | **纯标准库实现**（两比例 z 检验 / Wilson CI / facts 锁数），零第三方依赖 |
 | LLM | DeepSeek API（可选增强：决策与定性；无 Key 时规则引擎 + 模板全链路可跑） |
 | 交付 | Markdown 报告、离线 HTML 看板 |
-| 质量 | 48 个单元测试（stdlib unittest）+ CI（测试 / 报告重建 / 堆栈与 PII 卫生检查） |
+| 质量 | 95 个单元测试（stdlib unittest）+ CI（测试 / 报告重建 / 堆栈与 PII 卫生检查） |
 | Agent | [Agent Skills](https://agentskills.io)（`skills/*/SKILL.md`） |
 
 ---
@@ -59,6 +63,9 @@
 | 每日情报简报（异动决策 + 深挖） | [`11情报Agent/reports/daily_intel_latest.md`](./11情报Agent/reports/daily_intel_latest.md) |
 | 流失风险分层 | [`11情报Agent/reports/risk_insight_latest.md`](./11情报Agent/reports/risk_insight_latest.md) |
 | 跨游戏同口径对比 | [`11情报Agent/reports/cross_game_compare_latest.md`](./11情报Agent/reports/cross_game_compare_latest.md) |
+| 单游戏社区话题流 | [`11情报Agent/reports/community_insight_wuthering-waves_latest.md`](./11情报Agent/reports/community_insight_wuthering-waves_latest.md) |
+| 平台级发现流（事件信号） | [`11情报Agent/reports/platform_insight_latest.md`](./11情报Agent/reports/platform_insight_latest.md) |
+| 用户流动（跨游戏流向 / 投入度×流动） | [`11情报Agent/reports/user_flow_wuthering-waves_latest.md`](./11情报Agent/reports/user_flow_wuthering-waves_latest.md) |
 | 日 / 周报终稿 | [`04日报周报/reports/`](./04日报周报/reports/) |
 | 跨渠道综合简报 | [`09跨渠道AI/reports/`](./09跨渠道AI/reports/) |
 | 离线看板（双击即开） | [`05展示页/index.html`](./05展示页/index.html) |
@@ -102,6 +109,16 @@ python 02数据/annotate_reviews.py --limit 50
 python 04日报周报/build_skill_reports.py
 python 09跨渠道AI/build_channel_facts.py
 python 09跨渠道AI/synthesize_cross_channel.py
+
+# 社区通道（面向社区公司视角）：单游戏社区帖子流 → 平台级发现流
+python 01爬虫/crawl_taptap_community.py --game wuthering-waves --comment-limit 20
+python 11情报Agent/community_insight.py --game wuthering-waves
+python 01爬虫/crawl_taptap_discovery.py --source all --from-hot 3 --comment-limit 12
+python 11情报Agent/platform_insight.py
+
+# 用户流动（跨游戏足迹；分层取样保证高/低投入有对照）
+python 01爬虫/crawl_taptap_user.py --game wuthering-waves --from-reviews --limit-users 120 --sample stratified
+python 11情报Agent/user_flow.py --game wuthering-waves
 
 # 分析实验室 → 重建看板
 python 10分析实验室/anomaly_diagnosis.py

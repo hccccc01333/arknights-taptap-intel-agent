@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import subprocess
 import unittest
 from pathlib import Path
@@ -126,6 +127,63 @@ class TestLlmDecisionFallback(unittest.TestCase):
             self.assertIsNone(da.llm_decision(make_facts(), "sk-test"))
 
 
+class TestPlatformFacts(unittest.TestCase):
+    """平台侧为可选维度：缺失/损坏都要显式降级，且不能污染主链决策。"""
+
+    def test_missing_file_degrades_explicitly(self):
+        with mock.patch.object(da, "PLATFORM_JSON", Path("/nonexistent/platform_insight.json")):
+            pf = da.load_platform()
+        self.assertFalse(pf["available"])
+        self.assertIn("未生成", pf["reason"])
+
+    def test_corrupted_json_degrades_explicitly(self, ):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
+            f.write("{not-json")
+            tmp = Path(f.name)
+        try:
+            with mock.patch.object(da, "PLATFORM_JSON", tmp):
+                pf = da.load_platform()
+            self.assertFalse(pf["available"])
+            self.assertIn("降级", pf["reason"])
+        finally:
+            tmp.unlink()
+
+    def test_rule_decision_unaffected_without_platform(self):
+        # make_facts 不带 platform（老 facts 形态）：决策逻辑必须照旧
+        d = da.rule_decision(make_facts(significant=True, delta_pp=19.22))
+        self.assertEqual(d["mode"], "deep_dive")
+
+    def test_brief_renders_platform_section_when_available(self):
+        facts = make_facts()
+        facts["platform"] = {
+            "available": True,
+            "generated_at": "2026-09-29T12:39:00+08:00",
+            "stale": False,
+            "inputs": {"hot_hashtags": 10, "posts": 118, "posts_discover": 84,
+                       "posts_hashtag": 34, "loaded_comments": 74},
+            "top_signals": [{"kind": "hot_topic", "title": "三角洲行动二周年",
+                             "score": 6270, "evidence": "热榜第 1 名 / 浏览 6270",
+                             "matched_games": []}],
+            "tracked_game_hits": [],
+        }
+        decision = da.rule_decision(facts)
+        brief = da.render_brief(da.act(facts, decision), "定性文本")
+        self.assertIn("平台侧发现流", brief)
+        self.assertIn("三角洲行动二周年", brief)
+        self.assertIn("本次快照无平台事件命中已建档游戏", brief)
+
+    def test_brief_marks_stale_snapshot(self):
+        facts = make_facts()
+        facts["platform"] = {
+            "available": True, "generated_at": "2026-01-01T00:00:00+08:00", "stale": True,
+            "inputs": {}, "top_signals": [], "tracked_game_hits": [],
+        }
+        brief = da.render_brief(da.act(facts, da.rule_decision(facts)), "定性文本")
+        self.assertIn("已过期", brief)
+
+
 class TestBriefRendering(unittest.TestCase):
     def test_brief_has_locked_facts_and_no_traceback(self):
         facts = make_facts()
@@ -160,6 +218,41 @@ class TestBriefRendering(unittest.TestCase):
         decision["decider"] = "llm"
         text = da.qualitative_text(facts, decision, api_key=None)
         self.assertIn("36.93", text)
+
+
+class TestModelRouting(unittest.TestCase):
+    """DeepSeek 模型分层路由 + 退役模型名回归锁。
+
+    背景：deepseek-chat / deepseek-reasoner 已于 2026-07-24 退役且无静默回退，
+    旧代码里写的正是 deepseek-chat，调用必失败。这里锁死不让它回来。
+    """
+
+    def setUp(self):
+        self.src = (Path(__file__).resolve().parents[1] / "daily_agent.py").read_text(
+            encoding="utf-8"
+        )
+
+    def test_no_retired_model_names_in_code(self):
+        # 去掉注释行后再断言，避免注释里的警示文本误伤
+        code_lines = [
+            ln for ln in self.src.splitlines() if not ln.lstrip().startswith("#")
+        ]
+        code = "\n".join(code_lines)
+        for retired in ("deepseek-chat", "deepseek-reasoner"):
+            self.assertNotIn(retired, code, f"退役模型名再次出现: {retired}")
+
+    def test_flash_and_pro_constants_exist(self):
+        self.assertTrue(da.MODEL_FLASH)
+        self.assertTrue(da.MODEL_PRO)
+        self.assertNotEqual(da.MODEL_FLASH, da.MODEL_PRO)
+
+    def test_discriminative_tasks_use_flash(self):
+        # 决策（判断）与简报执笔（复述 facts）走 Flash，不是 Pro
+        llm_src = inspect.getsource(da.llm_decision)
+        self.assertIn("MODEL_FLASH", llm_src)
+        self.assertNotIn("MODEL_PRO", llm_src)
+        qual_src = inspect.getsource(da.qualitative_text)
+        self.assertIn("MODEL_FLASH", qual_src)
 
 
 if __name__ == "__main__":
