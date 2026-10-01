@@ -125,3 +125,5 @@ L6_delivery/briefing/reports/community_ops_2026*.md
 # ============================================================
 data/raw_lake/
 data/event_bus/
+data/state/l2_processed.sqlite3
+data/state/l2_embeddings.sqlite3

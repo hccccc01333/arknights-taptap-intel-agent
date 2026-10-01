@@ -34,6 +34,15 @@ TOPICS = {
     "source.schema.error": "Schema drift / 校验失败",
     "acquisition.priority.command": "★ 第三层→第一层：调频指令（含 ttl）",
     "deadletter.raw":      "死信（可 replay）",
+
+    # —— L2 加工层产出（第二层 → 第三层的接口）——
+    "processed.content.created": "标准化内容（CanonicalContent）",
+    "processed.content.updated": "已知内容的新版本",
+    "processed.metric.feature": "指标特征（百分位 / 速度）",
+    "processed.entity.detected": "实体抽取与链接结果",
+    "processed.content.deleted": "内容下架/删除",
+    "processing.data_quality": "加工层数据质量指标",
+    "processing.dlq.schema":   "Schema 校验失败（带 error_field）",
 }
 
 
