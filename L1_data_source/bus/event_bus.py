@@ -43,6 +43,18 @@ TOPICS = {
     "processed.content.deleted": "内容下架/删除",
     "processing.data_quality": "加工层数据质量指标",
     "processing.dlq.schema":   "Schema 校验失败（带 error_field）",
+
+    # —— L3 趋势层产出（第三层 → 第四层的接口）——
+    "trend.event.created":       "新事件",
+    "trend.event.updated":       "事件指标更新",
+    "trend.event.emerging":      "进入 Emerging（最有行动价值的窗口）",
+    "trend.event.growing":       "进入 Growing",
+    "trend.event.peaking":       "进入 Peaking",
+    "trend.event.declining":     "进入 Declining",
+    "trend.event.merged":        "事件合并（保留历史）",
+    "trend.event.split":         "事件拆分",
+    "trend.event.high_priority": "★ 第四层的触发门（hot/momentum/confidence 全达标）",
+    "trend.event.early_alert":   "★ 早期预警（加速度极高但热度还不高）",
 }
 
 

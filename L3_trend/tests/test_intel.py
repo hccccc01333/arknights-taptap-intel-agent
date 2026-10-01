@@ -3,7 +3,7 @@
 """intel_stats / risk_insight / anomaly_lite 的单元测试（纯标准库 unittest）。
 
 被测模块通过 importlib 从文件路径加载（中文目录名不做包导入）。
-运行：python -m unittest discover -s L4_decision/tests -v
+运行：python -m unittest discover -s L3_trend/tests -v
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-LAB = Path(__file__).resolve().parents[1]     # 本层目录（L4_decision）
+LAB = Path(__file__).resolve().parents[1]     # 本层目录（L3_trend）
 
 
-def _load(name: str, layer: str = "L4_decision"):
+def _load(name: str, layer: str = "L3_trend"):
     """跨层加载：分层后这三个模块已不在同一层，必须显式指定层。"""
     spec = importlib.util.spec_from_file_location(name, str(ROOT / layer / f"{name}.py"))
     mod = importlib.util.module_from_spec(spec)

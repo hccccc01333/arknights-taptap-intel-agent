@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent
 L1 = ROOT / "L1_data_source"
 L2 = ROOT / "L2_signal"
 L3 = ROOT / "L3_semantic"
-L4 = ROOT / "L4_decision"
+L3_TREND = ROOT / "L3_trend"
 L5 = ROOT / "L5_generation"
 L6 = ROOT / "L6_delivery"
 RUNTIME = ROOT / "runtime"
@@ -39,7 +39,7 @@ LAYERS: Dict[str, Path] = {
     "L1": L1, "L1_data_source": L1,
     "L2": L2, "L2_signal": L2,
     "L3": L3, "L3_semantic": L3,
-    "L4": L4, "L4_decision": L4,
+    "L3": L3_TREND, "L3_trend": L3_TREND,
     "L5": L5, "L5_generation": L5,
     "L6": L6, "L6_delivery": L6,
     "runtime": RUNTIME,

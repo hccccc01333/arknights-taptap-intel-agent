@@ -34,9 +34,9 @@
 | 层 | 目录 | 职责 | 有没有 Agent |
 |---|---|---|---|
 | **L1** | `L1_data_source/` | **信号采集**：各平台 → 统一 Content Event | ❌ 纯 Data Engineering |
-| **L2** | `L2_signal/` | 信号计算：features / 跨渠道 facts / 分析实验室 | ❌ 代码算数 |
-| **L3** | `L3_semantic/` | 语义理解：标注 v1.4、公告结构化 | ✅ LLM 标注 |
-| **L4** | `L4_decision/` | 决策判断：话题追踪、可发酵度、异动 | ✅ 规则兜底 + LLM 可选 |
+| **L2** | `L2_signal/` | **加工与语义标准化**：Canonical Model、清洗去重、实体链接、指标归一 | ❌ 默认不用 LLM |
+| 语义加工 | `L3_semantic/` | 语义理解：标注 v1.4、公告结构化（第二层的语义部分） | ✅ LLM 标注 |
+| **L3** | `L3_trend/` | ★ **趋势智能**（Data Science Core）：事件聚类、速度/加速度/爆发、Hot/Momentum/Confidence、生命周期、闭环调频 | ➖ 规则 + 统计 |
 | **L5** | `L5_generation/` | 生成：素材库、创意、洞察 | ✅ |
 | **L6** | `L6_delivery/` | 交付：简报 / 日报周报 / 看板 / 渠道对照 | ➖ 渲染 |
 | 控制面 | `runtime/` | harness / 任务契约 / LangGraph 图 / 调度 | ➖ |
@@ -121,9 +121,9 @@ python scripts/refresh_demo.py
 ```bash
 # 每日情报 Agent（感知 → 决策 → 行动 → 简报；无 Key 走规则模式）
 python L5_generation/risk_insight.py          # 流失风险分层
-python L4_decision/anomaly_lite.py          # 零依赖异动感知（近 4 窗检验）
-python L4_decision/topic_tracker.py --sample    # 话题采样（写入跨天状态库）
-python L4_decision/topic_tracker.py --snapshot  # 查看话题生命周期状态
+python L3_trend/anomaly_lite.py          # 零依赖异动感知（近 4 窗检验）
+python L3_trend/topic_tracker.py --sample    # 话题采样（写入跨天状态库）
+python L3_trend/topic_tracker.py --snapshot  # 查看话题生命周期状态
 python L6_delivery/briefing/daily_agent.py           # 当日情报简报（含跨天话题趋势）
 
 # 清洗与标注（标注需 API Key）
@@ -157,7 +157,7 @@ python L5_generation/cross_game_compare.py \
   --clean "鸣潮=data/raw/taptap_wuthering_waves/processed/reviews_clean.csv"
 
 # 单元测试（纯标准库，158 个用例；装 langgraph 则框架层测试一并执行，未装则整组跳过）
-python -m unittest discover -s L4_decision/tests -p "test_*.py"
+python -m unittest discover -s L3_trend/tests -p "test_*.py"
 ```
 
 ---
@@ -173,7 +173,7 @@ L6_delivery/dashboard/        离线看板
 06–08对照_*/     B站 / 抖音 / 微博
 L2_signal/cross_channel/      facts 锁数 + 综合简报
 L2_signal/lab/    异动 / 评估 / 事件
-L4_decision/     每日情报 Agent（风险分层 + 决策路由 + 话题追踪 + 简报）
+L3_trend/     每日情报 Agent（风险分层 + 决策路由 + 话题追踪 + 简报）
                    └ state/  话题状态库（运行时，不入 git）
 games/           游戏档案（参数化入口：换档案即换游戏）
 skills/          Agent Skills（唯一 Skill 源目录）

@@ -17,11 +17,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-LAB = Path(__file__).resolve().parents[1]          # 本层目录（L4_decision）
+LAB = Path(__file__).resolve().parents[1]          # 本层目录（L3_trend）
 ROOT = Path(__file__).resolve().parents[2]         # 项目根
 RUNTIME = ROOT / "runtime"                          # 控制面：scheduler / harness / task_contracts / agent_graph
 
-# 分层后归属 runtime 的模块（其余仍在 L4_decision）
+# 分层后归属 runtime 的模块（其余仍在 L3_trend）
 _RUNTIME_MODULES = {"scheduler", "harness", "task_contracts", "agent_graph"}
 
 

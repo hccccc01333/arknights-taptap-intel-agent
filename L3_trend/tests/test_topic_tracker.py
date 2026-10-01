@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""L4_decision/tests/test_topic_tracker.py — 话题追踪状态机测试。
+"""L3_trend/tests/test_topic_tracker.py — 话题追踪状态机测试。
 
 覆盖重点：
   · 话题身份归一（该合的合、不该合的不合）
@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "L4_decision"))
+sys.path.insert(0, str(ROOT / "L3_trend"))
 
 import topic_tracker as tt  # noqa: E402
 

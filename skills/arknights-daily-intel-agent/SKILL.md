@@ -4,7 +4,7 @@ description: >-
   Runs the daily intel Agent for Arknights TapTap舆情: perceive (facts locked by
   code) → decide (rule engine fallback + optional LLM) → act (deep_dive/routine
   routing) → brief. Use for 每日情报简报, 流失风险分层, 修辞伪装负向识别,
-  agent 架构讲解, or work under L4_decision/.
+  agent 架构讲解, or work under L3_trend/.
 license: MIT
 metadata:
   version: "1.0"
@@ -22,7 +22,7 @@ metadata:
 
 ## 何时用
 
-每日情报简报、流失风险分层、修辞伪装负向（讽刺/高级黑/反串）识别、`L4_decision/` 下任何工作。
+每日情报简报、流失风险分层、修辞伪装负向（讽刺/高级黑/反串）识别、`L3_trend/` 下任何工作。
 
 ## 四步架构
 

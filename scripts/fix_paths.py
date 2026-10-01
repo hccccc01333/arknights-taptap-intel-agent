@@ -53,8 +53,8 @@ EXACT: List[Tuple[str, str]] = [
 
 # —— 2. 旧 11情报Agent 拆散后的模块归属（一个目录拆成了四层）——
 MODULE_TO_LAYER: Dict[str, str] = {
-    "topic_tracker": "L4_decision", "ferment_judge": "L4_decision", "events": "L4_decision",
-    "freshness": "L4_decision", "anomaly_lite": "L4_decision", "intel_stats": "L4_decision",
+    "topic_tracker": "L3_trend", "ferment_judge": "L3_trend", "events": "L3_trend",
+    "freshness": "L3_trend", "anomaly_lite": "L3_trend", "intel_stats": "L3_trend",
     "materials": "L5_generation", "community_insight": "L5_generation", "community_ops": "L5_generation",
     "platform_insight": "L5_generation", "risk_insight": "L5_generation",
     "user_flow": "L5_generation", "cross_game_compare": "L5_generation",
@@ -115,7 +115,7 @@ def fix_file(path: str, dry: bool) -> int:
     text = rewrite_intel_agent(text)
     for old, new in DIRS:
         text = text.replace(old, new)
-    text = text.replace("11情报Agent", "L4_decision")     # 兜底：说不清归属的按决策层
+    text = text.replace("11情报Agent", "L3_trend")     # 兜底：说不清归属的按决策层
     if text != orig:
         if not dry:
             with open(path, "w", encoding="utf-8", newline="") as fh:
