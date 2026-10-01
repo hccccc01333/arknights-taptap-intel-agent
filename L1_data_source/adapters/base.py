@@ -88,9 +88,14 @@ class BaseAdapter:
             if ev is None:                                # 适配器主动丢弃（如空行）
                 continue
             if not ev.event_id:
-                ev.event_id = make_event_id(ev.platform, ev.source_type, ev.native_id, raw_ref)
-            if not ev.collected_at:
-                ev.collected_at = to_iso(row.get("crawled_at"))
+                ev.event_id = make_event_id(ev.platform, ev.content_type, ev.external_id, raw_ref)
+            if not ev.crawled_at:
+                ev.crawled_at = to_iso(row.get("crawled_at"))
+            # 轻量跑批（normalize.py）不走 Source Registry：补默认 lineage，保证协议完整可校验
+            if not ev.source_id:
+                ev.source_id = f"legacy:{ev.platform}"
+            if not ev.observed_at:
+                ev.observed_at = to_iso(row.get("crawled_at")) or to_iso(row.get("publish_time"))
             res.total += 1
             problems = validate_event(ev)
             if problems:

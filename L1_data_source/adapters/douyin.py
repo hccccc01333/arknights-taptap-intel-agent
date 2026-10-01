@@ -19,17 +19,17 @@ def _video(row, raw_ref, ctx) -> ContentEvent:
         source_type="video",
         title=pick(row, "title"),
         content=pick(row, "title"),
-        author=hash_author(pick(row, "author_uid_hash") or pick(row, "author_name")),
+        author_id=hash_author(pick(row, "author_uid_hash") or pick(row, "author_name")),
         published_at=to_iso(pick(row, "publish_time_cn") or pick(row, "crawled_at")),
         views=None,                          # 抖音搜索接口不返回播放量
         likes=parse_int(row.get("digg_count")),
         comments=parse_int(row.get("comment_count")),
         shares=None,
-        native_id=pick(row, "aweme_id"),
+        external_id=pick(row, "aweme_id"),
         url=pick(row, "url"),
         game=pick(row, "keyword"),
         raw_ref=raw_ref,
-        extra={"source": pick(row, "source")},
+        metadata={"source": pick(row, "source")},
     )
 
 
@@ -40,15 +40,15 @@ def _comment(row, raw_ref, ctx) -> ContentEvent:
         source_type="comment",
         title=first_line(text, 40),
         content=text,
-        author=hash_author(pick(row, "user_uid_hash")),
+        author_id=hash_author(pick(row, "user_uid_hash")),
         published_at=to_iso(pick(row, "publish_time_cn") or pick(row, "publish_time")),
         likes=parse_int(row.get("like_count")),
-        native_id=pick(row, "cid") or pick(row, "comment_id"),
+        external_id=pick(row, "cid") or pick(row, "comment_id"),
         parent_id=pick(row, "aweme_id"),
         url=pick(row, "video_url"),
         game=pick(row, "keyword"),
         raw_ref=raw_ref,
-        extra={"replies": parse_int(row.get("reply_count"))},
+        metadata={"replies": parse_int(row.get("reply_count"))},
     )
 
 

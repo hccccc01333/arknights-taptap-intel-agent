@@ -18,17 +18,17 @@ def _post(row, raw_ref, ctx) -> ContentEvent:
         source_type="post",
         title=first_line(text, 40),
         content=text,
-        author=hash_author(pick(row, "user_id_hash")),
+        author_id=hash_author(pick(row, "user_id_hash")),
         published_at=to_iso(pick(row, "publish_time_cn") or pick(row, "publish_time")),
         views=None,
         likes=parse_int(row.get("like_count")),
         comments=parse_int(row.get("comments_count")),
         shares=parse_int(row.get("reposts_count")),   # 只有微博有真实转发数
-        native_id=pick(row, "mid") or pick(row, "id"),
+        external_id=pick(row, "mid") or pick(row, "id"),
         url=pick(row, "url"),
         game=pick(row, "keyword"),
         raw_ref=raw_ref,
-        extra={"source": pick(row, "source")},
+        metadata={"source": pick(row, "source")},
     )
 
 
@@ -39,15 +39,15 @@ def _comment(row, raw_ref, ctx) -> ContentEvent:
         source_type="comment",
         title=first_line(text, 40),
         content=text,
-        author=hash_author(pick(row, "user_id_hash")),
+        author_id=hash_author(pick(row, "user_id_hash")),
         published_at=to_iso(pick(row, "publish_time_cn") or pick(row, "publish_time")),
         likes=parse_int(row.get("like_count")),
-        native_id=pick(row, "cid") or pick(row, "comment_id"),
+        external_id=pick(row, "cid") or pick(row, "comment_id"),
         parent_id=pick(row, "post_mid") or pick(row, "mid"),
         url=pick(row, "url"),
         game=pick(row, "keyword"),
         raw_ref=raw_ref,
-        extra={"replies": parse_int(row.get("reply_count")), "item_type": pick(row, "item_type")},
+        metadata={"replies": parse_int(row.get("reply_count")), "item_type": pick(row, "item_type")},
     )
 
 

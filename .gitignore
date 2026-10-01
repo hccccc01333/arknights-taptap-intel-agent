@@ -117,3 +117,11 @@ data/raw/taptap/raw_llm/
 data/state/
 L6_delivery/briefing/reports/topic_tracker_2026*.md
 L6_delivery/briefing/reports/community_ops_2026*.md
+
+# ============================================================
+# L1 运行时产物（2026-10-01 加入）
+# raw_lake 含原始响应与明文作者名（原始域）；event_bus 是运行时事件流。
+# 两者都可从 data/raw + pipeline.py 重建，不入库。
+# ============================================================
+data/raw_lake/
+data/event_bus/

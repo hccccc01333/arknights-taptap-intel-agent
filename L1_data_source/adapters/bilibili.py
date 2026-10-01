@@ -18,17 +18,17 @@ def _video(row, raw_ref, ctx) -> ContentEvent:
         source_type="video",
         title=pick(row, "title"),
         content=pick(row, "title"),          # 视频表没有正文，标题即内容
-        author=hash_author(pick(row, "up_mid") or pick(row, "up_name")),
+        author_id=hash_author(pick(row, "up_mid") or pick(row, "up_name")),
         published_at=to_iso(pick(row, "pubdate_cn")),
         views=parse_int(row.get("play")),
         likes=None,                          # 搜索接口不返回点赞，不填 0
         comments=parse_int(row.get("review")),
         shares=None,
-        native_id=pick(row, "aid"),
+        external_id=pick(row, "aid"),
         url=pick(row, "url"),
         game=pick(row, "keyword"),
         raw_ref=raw_ref,
-        extra={"bvid": pick(row, "bvid"), "up_name_hashed": True, "source": pick(row, "source")},
+        metadata={"bvid": pick(row, "bvid"), "up_name_hashed": True, "source": pick(row, "source")},
     )
 
 
@@ -39,15 +39,15 @@ def _comment(row, raw_ref, ctx) -> ContentEvent:
         source_type="comment",
         title=first_line(text, 40),
         content=text,
-        author=hash_author(pick(row, "user_mid_hash")),
+        author_id=hash_author(pick(row, "user_mid_hash")),
         published_at=to_iso(pick(row, "publish_time_cn") or pick(row, "publish_time")),
         likes=parse_int(row.get("like_count")),
-        native_id=pick(row, "rpid") or pick(row, "comment_id"),
+        external_id=pick(row, "rpid") or pick(row, "comment_id"),
         parent_id=pick(row, "aid"),
         url=pick(row, "video_url"),
         game=pick(row, "keyword"),
         raw_ref=raw_ref,
-        extra={"replies": parse_int(row.get("reply_count")), "bvid": pick(row, "bvid")},
+        metadata={"replies": parse_int(row.get("reply_count")), "bvid": pick(row, "bvid")},
     )
 
 

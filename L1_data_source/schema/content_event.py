@@ -1,20 +1,26 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""L1 信号采集层 —— 统一内容事件（Content Event）定义。
+"""L1 信号采集层 —— RawContentEvent 协议 v1.0（严格协议，第一天就带版本号）。
 
-这一层的职责只有一件事：把各平台形态各异的数据，归一化成**同一个结构**。
-它属于 Data Engineering，**不放 Agent**：不做判断、不做打分、不做语义理解。
+设计来源：用户给的 L1 完整版架构（2026-10-01）。相对上一版的三处关键升级：
 
-设计红线（与项目既有纪律一致）：
-1. **缺失 = None，绝不填 0** —— 0 是"有这个数且为 0"，None 是"平台没给"。
-   填 0 会让下游把它当成真实信号（本项目踩过：posts.supports 全 0 被误当传播度）。
-2. **作者一律脱敏** —— 只收 hash，绝不明文用户名（PII 不进库，见 materials.py 同款约束）。
-3. **可溯源** —— 每条事件必须能追回原始文件与行号（raw_ref），说不出来源的数据不算数。
-4. **纯标准库** —— 本层不依赖 pandas/numpy。
+1. **三个时间必须分开**（算热点延迟的生命线）：
+   - `published_at` 内容什么时候发布（平台给的）
+   - `observed_at`  系统什么时候观察到这个状态（采集到的指标所属时刻）
+   - `crawled_at`   这次采集什么时候发生
+   混成一个字段，就算不出「热点延迟」，也算不准 velocity。
+2. **Data Lineage 全字段**：`source_id / request_id / crawl_run_id / raw_ref /
+   parser_version / schema_version` —— 以后「昨天这个热点数据为什么错了」能精确追到
+   那一次请求和那一版 parser。
+3. **不可变 + 可重放**：事件本身不改，只追加；parser 出 bug 就换新版重放 raw。
 
-字段说明（前 8 项是跨平台的公共面，后面是工程必需）：
-    platform / title / content / author / published_at
-    views / likes / comments / shares
+★ 与项目既有纪律的一处冲突及取舍（必须写明）：
+   用户规格里有 `author_name` 字段，但本项目的 PII 纪律是「明文不进产物」。
+   处理：`author_name` **保留在协议里但默认 None**，由 `compliance_config.contains_pii`
+   显式开关；开启时明文只落 **raw lake（不入 git）**，不进事件流。
+   这样既不丢规格，也不破纪律。
+
+外部互联网数据一定会 drift，所以 schema_version 是必填 —— 永远不要默认「schema 不会变」。
 """
 
 from __future__ import annotations
@@ -28,39 +34,37 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 __all__ = [
-    "ContentEvent",
-    "PLATFORM_REGISTRY",
-    "SOURCE_TYPES",
-    "TZ_CN",
-    "to_iso",
-    "parse_int",
-    "read_csv_rows",
-    "hash_author",
-    "validate_event",
-    "events_to_jsonl",
+    "RawContentEvent", "ContentEvent", "MetricSnapshot",
+    "SCHEMA_VERSION", "PARSER_VERSION",
+    "PLATFORM_REGISTRY", "SOURCE_TYPES", "SIGNAL_TYPES", "TZ_CN",
+    "to_iso", "parse_int", "read_csv_rows", "hash_author",
+    "validate_event", "events_to_jsonl", "make_event_id", "content_key", "snapshot_id",
 ]
 
-# 北京时间：TapTap / B站 / 微博 的时间戳都按东八区解释
+SCHEMA_VERSION = "1.0"        # RawContentEvent 协议版本；破坏性变更必须 +1
+PARSER_VERSION = "taptap-1.0"  # 由各 adapter 覆盖；进 raw lake 与 lineage，parser 出 bug 可按版重放
+
 TZ_CN = timezone(timedelta(hours=8))
 
-# 允许的事件类型（source_type）：同一平台可以有多种（TapTap 有评论/论坛/动态/评分/榜单）
+# 事件类型（同一平台可有多种）
 SOURCE_TYPES = {
-    "post",       # 图文/动态帖
-    "moment",     # 社区动态（TapTap 动态流）
-    "forum",      # 论坛帖
-    "comment",    # 评论（挂在某个帖/视频下）
-    "video",      # 视频
-    "review",     # 游戏评论/打分
-    "rating",     # 评分聚合
-    "rank",       # 榜单
-    "hashtag",    # 话题/词条（聚合对象，不是单条内容）
-    "article",    # 新闻/媒体文章
-    "index",      # 指数类（百度指数 / Google Trends）
+    "post", "moment", "forum", "comment", "video", "review",
+    "rating", "rank", "hashtag", "article", "index",
 }
 
-# 平台注册表：用户给出的全网信号源清单。status 三种：
-#   active  = 已有适配器 + 本地已有真实数据
-#   planned = 已登记，尚无适配器（诚实标注，不假装接了）
+# ★ 信号类型：按「信号价值」分类，而不是按平台分类。
+# 第三层靠它识别传播路径：Search ↑ → Social ↑ → Content ↑ → Community ↑（热点生命周期）
+SIGNAL_TYPES = {
+    "search":     "用户开始主动寻找（百度指数 / Google Trends / 站内搜索）",
+    "social":     "用户开始讨论（微博 / X / 小红书）",
+    "content":    "创作者开始生产（B站 / YouTube / 抖音）",
+    "community":  "核心用户深度讨论（TapTap / Reddit / Steam 评论）",
+    "news":       "信息进入大众传播（新闻 / 行业媒体）",
+    "official":   "官方事件发生（游戏官网 / 开发者账号 / 公告）",
+    "market":     "商业表现变化（Steam 销量 / 榜单 / 畅销排名）",
+    "internal":   "平台内部行为（搜索 / 浏览 / 评论 / 关注）",
+}
+
 PLATFORM_REGISTRY: Dict[str, Dict[str, Any]] = {
     "taptap":        {"name": "TapTap",       "status": "active",  "kinds": ["review", "forum", "moment", "rating", "rank"]},
     "bilibili":      {"name": "哔哩哔哩",      "status": "active",  "kinds": ["video", "comment"]},
@@ -75,29 +79,30 @@ PLATFORM_REGISTRY: Dict[str, Dict[str, Any]] = {
     "x":             {"name": "X (Twitter)",   "status": "planned", "kinds": ["post"]},
     "youtube":       {"name": "YouTube",       "status": "planned", "kinds": ["video", "comment"]},
     "google_trends": {"name": "Google Trends", "status": "planned", "kinds": ["index"]},
-    "steam":         {"name": "Steam",         "status": "planned", "kinds": ["review", "rating"]},
+    "steam":         {"name": "Steam",         "status": "planned", "kinds": ["review", "rating", "rank"]},
 }
 
-# 作者字段的合法形态：unknown / 采集侧哈希（hex）/ 本层生成的 h_ 前缀哈希。
-# 反过来，凡不匹配这条的就是明文昵称或明文 UID —— 一律拦下。
-# ★ 注意别写成"含中文才算明文"：英文昵称 'Bismarck' 同样是 PII。
+# 作者合法形态白名单：unknown / 采集侧哈希 / 本层 h_ 前缀哈希
 _AUTHOR_OK_RE = re.compile(r"^(unknown|h_[0-9a-f]{8,64}|[0-9a-f]{8,64})$", re.I)
 
 
-def to_iso(value: Any) -> Optional[str]:
-    """把各种时间表示统一成 ISO8601（东八区）。无法解析返回 None，绝不猜。
+def now_cn() -> datetime:
+    return datetime.now(TZ_CN)
 
-    支持：unix 秒（int/数字字符串）、ISO 字符串、'YYYY-MM-DD HH:MM:SS'。
-    """
+
+def to_iso(value: Any) -> Optional[str]:
+    """统一成 ISO8601（东八区）。无法解析返回 None，绝不猜。"""
     if value is None:
         return None
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=TZ_CN)
+        return dt.astimezone(TZ_CN).isoformat()
     s = str(value).strip()
     if not s:
         return None
-    # 纯数字 → 当作 unix 秒
     if re.fullmatch(r"\d{9,13}", s):
         ts = int(s)
-        if ts > 10_000_000_000:  # 毫秒
+        if ts > 10_000_000_000:
             ts //= 1000
         try:
             return datetime.fromtimestamp(ts, TZ_CN).isoformat()
@@ -121,7 +126,7 @@ def to_iso(value: Any) -> Optional[str]:
 
 
 def parse_int(value: Any) -> Optional[int]:
-    """字符串 → int。空/非法/负数一律 None（不把 '' 当 0，不编数字）。"""
+    """空/非法/负数一律 None —— 不把 '' 当 0，不编数字。"""
     if value is None:
         return None
     s = str(value).strip().replace(",", "")
@@ -135,53 +140,94 @@ def parse_int(value: Any) -> Optional[int]:
 
 
 def hash_author(raw: Any) -> str:
-    """作者统一脱敏：已经是 hash 就原样用，否则 sha1 前 16 位。空 → 'unknown'。"""
+    """作者脱敏：已是 hash 则原样（保住跨表 join），否则 sha1 前 16 位。"""
     if raw is None:
         return "unknown"
     s = str(raw).strip()
     if not s:
         return "unknown"
     if re.fullmatch(r"[0-9a-f]{8,64}", s.lower()):
-        return s.lower()          # 采集侧已经哈希过，不重复哈希
+        return s.lower()
     return "h_" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
 
 
 def read_csv_rows(path: str, encoding: str = "utf-8-sig") -> Iterator[tuple]:
-    """读 CSV 并附带行号，用于溯源（raw_ref = 文件:行号）。
-
-    行号从 2 开始（1 是表头），与在 Excel 里看到的实际行号一致。
-    """
+    """读 CSV 带行号（行号从 2 开始，与 Excel 里看到的一致），用于 raw_ref。"""
     with open(path, "r", encoding=encoding, errors="replace", newline="") as fh:
         reader = csv.DictReader(fh)
         for idx, row in enumerate(reader, start=2):
             yield idx, row
 
 
-@dataclass
-class ContentEvent:
-    """全网统一的内容事件。所有平台适配器都必须产出这个结构。"""
+def content_key(platform: str, external_id: str) -> str:
+    """★ 内容身份：platform:external_id —— 与「某次观察」是两个概念，必须分开。"""
+    return f"{platform}:{external_id}"
 
-    # —— 跨平台公共面（用户定义的 8 项）——
-    platform: str
-    title: str = ""
-    content: str = ""
-    author: str = "unknown"
-    published_at: Optional[str] = None
+
+def make_event_id(platform: str, source_type: str, native_id: Optional[str], raw_ref: str) -> str:
+    if native_id:
+        return f"{platform}:{source_type}:{native_id}"
+    return f"{platform}:{source_type}:row:{hashlib.sha1(raw_ref.encode('utf-8')).hexdigest()[:16]}"
+
+
+def snapshot_id(source_id: str, external_id: str, observed_at: str) -> str:
+    """★ 观察身份：hash(source_id + external_id + observed_at) —— 同一内容不同时刻是不同 snapshot。"""
+    return hashlib.sha1(f"{source_id}|{external_id}|{observed_at}".encode("utf-8")).hexdigest()[:20]
+
+
+@dataclass
+class RawContentEvent:
+    """统一内容事件（v1.0）。所有 Connector 经 Protocol Adapter 后都产出这个。"""
+
+    # —— 身份 ——
+    event_id: str = ""
+    source_id: str = ""                 # ★ Source ≠ Platform：精确到「微博热搜」而不是「微博」
+    platform: str = ""
+    external_id: str = ""               # 平台原生 id
+    parent_id: Optional[str] = None     # 评论所属帖/视频（保住语境，素材层要求存 Thread 不存孤立评论）
+    game: Optional[str] = None          # 所属游戏（多游戏档案：games/<key>.json）
+    source_type: str = "post"           # 内容形态（post/comment/video/review/...）
+    content_type: str = "post"          # 同上（规格里两个字段都出现，这里双向同步，避免两处打架）
+    signal_type: str = "community"      # ★ 信号价值分类，见 SIGNAL_TYPES
+
+    # —— 内容 ——
+    title: Optional[str] = None
+    content: Optional[str] = None
+    url: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+
+    # —— 作者（PII 受控）——
+    author_id: str = "unknown"
+    author_name: Optional[str] = None   # ★ 默认 None；仅当 compliance.contains_pii 允许时填充
+
+    # —— ★ 三个时间，必须分开 ——
+    published_at: Optional[str] = None  # 内容发布时间
+    observed_at: Optional[str] = None   # 观察到该状态的时刻（指标所属时刻）
+    crawled_at: Optional[str] = None    # 本次采集发生时刻
+
+    # —— 指标（同时给扁平字段与 dict，扁平字段为 None 表示"平台没给"）——
     views: Optional[int] = None
     likes: Optional[int] = None
-    comments: Optional[int] = None     # 评论数（数字），不是评论文本
+    comments: Optional[int] = None
     shares: Optional[int] = None
+    favorites: Optional[int] = None
+    rank: Optional[int] = None
+    metrics: Dict[str, Any] = field(default_factory=dict)
 
-    # —— 工程字段 ——
-    event_id: str = ""
-    source_type: str = "post"
-    url: Optional[str] = None
-    game: Optional[str] = None
-    parent_id: Optional[str] = None    # 评论所属帖/视频的原生 id
-    native_id: Optional[str] = None    # 平台原生 id
-    collected_at: Optional[str] = None
-    raw_ref: str = ""                  # 溯源：相对路径:行号
-    extra: Dict[str, Any] = field(default_factory=dict)
+    # —— 溯源 / 治理 ——
+    raw_ref: str = ""                   # 指向不可变原始数据（本地路径或 s3://）
+    request_id: str = ""                # 每次 HTTP 请求唯一
+    crawl_run_id: str = ""              # 每次采集任务唯一
+    parser_version: str = PARSER_VERSION
+    schema_version: str = SCHEMA_VERSION
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # source_type ⇄ content_type 双向同步：老代码只给一个，另一个自动跟上
+        if self.source_type == "post" and self.content_type not in ("post", "", None):
+            self.source_type = self.content_type
+        elif self.content_type == "post" and self.source_type not in ("post", "", None):
+            self.content_type = self.source_type
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -189,40 +235,88 @@ class ContentEvent:
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False)
 
+    def sync_metrics(self) -> "RawContentEvent":
+        """扁平字段 ⇄ metrics dict 双向同步，避免两处数字打架。"""
+        flat = {
+            "views": self.views, "likes": self.likes, "comments": self.comments,
+            "shares": self.shares, "favorites": self.favorites, "rank": self.rank,
+        }
+        merged = {k: v for k, v in flat.items() if v is not None}
+        merged.update({k: v for k, v in self.metrics.items() if v is not None})
+        self.metrics = merged
+        for k, v in merged.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
+        return self
 
-def make_event_id(platform: str, source_type: str, native_id: Optional[str], raw_ref: str) -> str:
-    """稳定 id：能不依赖行号就不要依赖（行号会因重采而漂移）。"""
-    if native_id:
-        return f"{platform}:{source_type}:{native_id}"
-    return f"{platform}:{source_type}:row:{hashlib.sha1(raw_ref.encode('utf-8')).hexdigest()[:16]}"
+
+# 兼容旧名（normalize.py 与既有测试引用）
+ContentEvent = RawContentEvent
 
 
-def validate_event(ev: ContentEvent) -> List[str]:
-    """返回问题列表；空列表 = 合法。故意做成"收集全部问题"而不是首错即抛，
-    这样跑批时能一次性看到某平台数据到底坏在哪几处。"""
+@dataclass
+class MetricSnapshot:
+    """★ 指标快照：时间 × 指标，永不 UPDATE，只追加。
+
+    第三层要的 velocity = Δviews/Δt、acceleration = Δvelocity/Δt 全靠它。
+    这是 L1 最关键的数据产品之一 —— 只存"当前值"的系统算不出加速度。
+    """
+
+    source_id: str
+    external_id: str
+    observed_at: str
+    views: Optional[int] = None
+    likes: Optional[int] = None
+    comments: Optional[int] = None
+    shares: Optional[int] = None
+    favorites: Optional[int] = None
+    rank: Optional[int] = None
+    content_key: str = ""
+    snapshot_id: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.content_key and self.external_id:
+            # 缺 platform 时用 source_id 兜底，保证 key 稳定
+            self.content_key = f"{self.source_id}:{self.external_id}"
+        if not self.snapshot_id:
+            self.snapshot_id = snapshot_id(self.source_id, self.external_id, self.observed_at)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def validate_event(ev: RawContentEvent) -> List[str]:
+    """返回问题列表；空 = 合法。收集全部问题，便于一次看清某数据源坏在哪。"""
     problems: List[str] = []
     if ev.platform not in PLATFORM_REGISTRY:
         problems.append(f"未登记的平台: {ev.platform}")
-    if ev.source_type not in SOURCE_TYPES:
-        problems.append(f"未登记的 source_type: {ev.source_type}")
+    if ev.content_type not in SOURCE_TYPES:
+        problems.append(f"未登记的 content_type: {ev.content_type}")
+    if ev.signal_type not in SIGNAL_TYPES:
+        problems.append(f"未登记的 signal_type: {ev.signal_type}")
     if not ev.event_id:
         problems.append("event_id 为空")
+    if not ev.source_id:
+        problems.append("source_id 为空（无法溯源到具体数据源）")
     if not (ev.title or ev.content):
-        problems.append("title 与 content 全空（无内容可分析）")
-    for f in ("views", "likes", "comments", "shares"):
+        problems.append("title 与 content 全空")
+    for f in ("views", "likes", "comments", "shares", "favorites", "rank"):
         v = getattr(ev, f)
         if v is not None and (not isinstance(v, int) or v < 0):
             problems.append(f"{f} 非法: {v!r}")
-    # PII 闸门：作者必须是 hash 或 unknown，不能是明文昵称/明文 UID
-    if not _AUTHOR_OK_RE.match(ev.author or ""):
-        problems.append(f"作者疑似明文未脱敏: {ev.author!r}")
+    if not _AUTHOR_OK_RE.match(ev.author_id or ""):
+        problems.append(f"作者疑似明文未脱敏: {ev.author_id!r}")
     if not ev.raw_ref:
         problems.append("raw_ref 为空（不可溯源）")
+    if not ev.observed_at:
+        problems.append("observed_at 为空（算不出新鲜度/速度）")
+    if ev.schema_version != SCHEMA_VERSION:
+        problems.append(f"schema_version 不匹配: {ev.schema_version} != {SCHEMA_VERSION}")
     return problems
 
 
-def events_to_jsonl(events: Iterable[ContentEvent], path: str) -> int:
-    """写 JSONL，返回条数。"""
+def events_to_jsonl(events: Iterable[RawContentEvent], path: str) -> int:
     n = 0
     with open(path, "w", encoding="utf-8", newline="") as fh:
         for ev in events:

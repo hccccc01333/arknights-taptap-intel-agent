@@ -34,17 +34,17 @@ def _moment(row, raw_ref, ctx) -> ContentEvent:
         source_type=_SOURCE_MAP.get(pick(row, "source_type").lower(), "moment"),
         title=title,
         content=summary,
-        author=hash_author(pick(row, "author_id_hash") or pick(row, "author_name")),
+        author_id=hash_author(pick(row, "author_id_hash") or pick(row, "author_name")),
         published_at=to_iso(pick(row, "publish_time")),
         views=parse_int(row.get("pv_total")),
         likes=parse_int(row.get("ups")),            # ★ 原帖看 ups，不看 supports
         comments=parse_int(row.get("comments")),
         shares=None,                                # TapTap 无转发数字，不填 0
-        native_id=pick(row, "moment_id"),
+        external_id=pick(row, "moment_id"),
         game=pick(row, "app_title"),
         url=f"https://www.taptap.cn/moment/{pick(row, 'moment_id')}" if pick(row, "moment_id") else None,
         raw_ref=raw_ref,
-        extra={
+        metadata={
             "group_id": pick(row, "group_id"),
             "hashtag_id": pick(row, "hashtag_id"),
             "hashtag_title": pick(row, "hashtag_title"),
@@ -59,10 +59,10 @@ def _comment(row, raw_ref, ctx) -> ContentEvent:
         source_type="comment",
         title=first_line(content, 40),
         content=content,
-        author=hash_author(pick(row, "author_name")),
+        author_id=hash_author(pick(row, "author_name")),
         published_at=to_iso(pick(row, "publish_time")),
         likes=parse_int(row.get("supports")),       # ★ 评论看 supports
-        native_id=pick(row, "comment_id"),
+        external_id=pick(row, "comment_id"),
         parent_id=pick(row, "moment_id"),
         raw_ref=raw_ref,
     )
@@ -75,13 +75,13 @@ def _hashtag(row, raw_ref, ctx) -> ContentEvent:
         source_type="hashtag",
         title=pick(row, "title"),
         content=pick(row, "description"),
-        author="unknown",
+        author_id="unknown",
         published_at=to_iso(pick(row, "crawled_at")),
         views=parse_int(row.get("page_view")),      # 话题页曝光 ≠ 社区在讨论
         comments=parse_int(row.get("comment_count")),
-        native_id=pick(row, "hashtag_id"),
+        external_id=pick(row, "hashtag_id"),
         raw_ref=raw_ref,
-        extra={"hot_id": pick(row, "hot_id"), "sort": parse_int(row.get("sort")),
+        metadata={"hot_id": pick(row, "hot_id"), "sort": parse_int(row.get("sort")),
                "is_new": pick(row, "is_new")},
     )
 
@@ -94,14 +94,14 @@ def _review(row, raw_ref, ctx) -> ContentEvent:
         source_type="review",
         title=first_line(text, 40),
         content=text,
-        author=hash_author(pick(row, "user_id_hash") or pick(row, "user_id")),
+        author_id=hash_author(pick(row, "user_id_hash") or pick(row, "user_id")),
         published_at=to_iso(pick(row, "publish_time")),
         likes=parse_int(row.get("support_count")),
-        native_id=pick(row, "review_id"),
+        external_id=pick(row, "review_id"),
         parent_id=pick(row, "moment_id"),
         url=pick(row, "source_url"),
         raw_ref=raw_ref,
-        extra={
+        metadata={
             "score_raw": parse_int(row.get("score_raw")),
             "score_norm": row.get("score_norm"),
             "played_hours": row.get("played_hours"),
