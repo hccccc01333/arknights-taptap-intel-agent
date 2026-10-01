@@ -3,7 +3,7 @@ name: arknights-taptap-yuqing-report
 description: >-
   Produces decision-ready TapTap Arknights daily/weekly舆情 reports from
   annotations_v1_4 (executive summary 四句, 四问法, thin-sample and contrast
-  rules). Use when writing 日报/周报/异动/舆情报告 or working under 04日报周报/.
+  rules). Use when writing 日报/周报/异动/舆情报告 or working under L6_delivery/period_reports/.
 license: MIT
 metadata:
   version: "1.0"
@@ -20,15 +20,15 @@ metadata:
 
 ## 何时用
 
-日报、周报、异动摘要、舆情报告、`04日报周报/`。
+日报、周报、异动摘要、舆情报告、`L6_delivery/period_reports/`。
 
 ## 数据
 
 | 用途 | 路径 |
 |------|------|
-| 标注 | `03标注结果/annotations_v1_4.csv` |
-| 时间 | `02数据/processed/reviews_clean.csv` → `publish_time_cn` |
-| 修辞口径 | `03标注结果/讽刺反串高级黑-资料与口径.md` |
+| 标注 | `data/annotations/annotations_v1_4.csv` |
+| 时间 | `data/processed/reviews/reviews_clean.csv` → `publish_time_cn` |
+| 修辞口径 | `data/annotations/讽刺反串高级黑-资料与口径.md` |
 
 - `sentiment` = 主指标  
 - `rhetoric` / `incongruity_cues` = 复核通道  
@@ -68,13 +68,13 @@ metadata:
 
 ## 输出与复现
 
-- `04日报周报/reports/daily_YYYYMMDD.md`  
-- `04日报周报/reports/weekly_YYYYMMDD_YYYYMMDD.md`  
+- `L6_delivery/period_reports/reports/daily_YYYYMMDD.md`  
+- `L6_delivery/period_reports/reports/weekly_YYYYMMDD_YYYYMMDD.md`  
 
 优先跑脚本保证口径一致：
 
 ```bash
-python 04日报周报/build_skill_reports.py
+python L6_delivery/period_reports/build_skill_reports.py
 ```
 
 人工改写时仍须满足本 Skill 的质量标准与禁止项。

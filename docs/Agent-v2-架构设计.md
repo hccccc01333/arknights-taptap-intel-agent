@@ -21,7 +21,7 @@
 >
 > | 层 | 目标短语 | 架构含义 |
 > |---|---|---|
-> | 输入 | **全网热点追踪** | 数据面从「TapTap 单平台」扩到多源；**项目已有 B站 / 抖音 / 微博 三渠道爬虫与样本**（06–08 目录）+ `09跨渠道AI` 综合脚本，「全网」不是从零开始 |
+> | 输入 | **全网热点追踪** | 数据面从「TapTap 单平台」扩到多源；**项目已有 B站 / 抖音 / 微博 三渠道爬虫与样本**（06–08 目录）+ `L2_signal/cross_channel` 综合脚本，「全网」不是从零开始 |
 > | 中间资产 | **情报与素材系统** | 「情报」= 判断（这是什么热点、是否与 TapTap 相关）；「素材」= 可复用内容资产——**本项目首次引入「素材」这一产出物**。定义与实现见 [素材层设计](./素材层设计.md)（四类分两级：原帖引用/热评金句/梗 = 抽取；二创角度 = 生成） |
 > | 输出 | **与 TapTap 相关的实际增长创意** | 产出从「报告」变为「可执行的创意」——**这是 LLM 真正的主场**（不是计算、不是判断，是创造），也补上了 §0.5 缺失的那块 Agent 正当性 |
 >
@@ -207,9 +207,9 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 ② 管线层      采集(--game/--data-dir/--source) → 清洗 → LLM标注(两段式) → 分析实验室
               （两个游戏共用同一套代码；原始数据含 PII 不入 Git）
               数据面按**归属**分三类目录，避免口径串味：
-                02数据_<game>/            单游戏评分区（reviews）
-                02数据_<game>/community/  单游戏社区（S1/S2/S3）
-                02数据_platform/          平台级发现流（S4/S5/S6，不归属单一游戏）
+                data/raw/taptap_<game>/            单游戏评分区（reviews）
+                data/raw/taptap_<game>/community/  单游戏社区（S1/S2/S3）
+                data/raw/taptap/          平台级发现流（S4/S5/S6，不归属单一游戏）
 ③ Agent 层    LangGraph 两段式控制面（见 §2）——v2 核心
 ④ 支撑层      工具箱 / 跨日记忆 / 执行轨迹 / DeepSeek(可选)
 ```
@@ -279,7 +279,7 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 
 | 层 | 放什么 | 在哪 | 是否进 State |
 |---|---|---|---|
-| **原文层** | 帖 / 评全文、Thread（帖 + 评论束） | `02数据_platform/*.csv`、`materials.jsonl` | ❌ 不进 |
+| **原文层** | 帖 / 评全文、Thread（帖 + 评论束） | `data/raw/taptap/*.csv`、`materials.jsonl` | ❌ 不进 |
 | **facts 层** | 数字、判定量、**短标识**（标题 ~13 字） | 各 `outputs/*.json`；State 只搬判定量 | ✅ 进 |
 | **产物层** | 引文 / 素材卡片 / 简报（**必须带溯源**） | `materials.jsonl`、`reports/*.md` | ❌ 不进 |
 
@@ -357,7 +357,7 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 **「facts 源」到底干了什么——拿 `platform_insight` 举个实例**：
 
 ```
-输入  02数据_platform/ 三个 CSV：hot_hashtags 10 条 / discovery_posts 118 条 / discovery_comments 74 条
+输入  data/raw/taptap/ 三个 CSV：hot_hashtags 10 条 / discovery_posts 118 条 / discovery_comments 74 条
 输出  outputs/platform_insight.json：
         inputs         {hot_hashtags:10, posts:118, loaded_comments:74}   ← 数，已经算好
         hot_board      [10 条，按 page_view 排序]
@@ -415,9 +415,9 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 
 | 已完成模块 | 文件 | 落在哪层 | 在 v2 图里将成为什么 | 状态细节 |
 |---|---|---|---|---|
-| 平台发现流采集（S4/S5/S6） | `01爬虫/crawl_taptap_discovery.py` | ① 采集侧 | 第一段「采集工具」的一个 `--source` 分支 | 产出 `02数据_platform/`，不归属单一游戏 |
-| 用户足迹采集（U1） | `01爬虫/crawl_taptap_user.py` | ① 采集侧 | 同上，但是**高成本可选工具**（鸣潮 594 人 / 13 分钟 / 611 次调用），不进每日巡检默认路径 | 分层取样 `--sample stratified` 为默认 |
-| PII 加盐哈希 | `01爬虫/pii_hash.py` | ④ 支撑层（被 ①② 横切共用） | **不属于任何节点，是一条横切约束**——所有产出文本体的出入口都要过它 | HMAC-SHA256，盐在 `.env`；换盐 = 历史哈希全废 |
+| 平台发现流采集（S4/S5/S6） | `L1_data_source/collectors/taptap/crawl_taptap_discovery.py` | ① 采集侧 | 第一段「采集工具」的一个 `--source` 分支 | 产出 `data/raw/taptap/`，不归属单一游戏 |
+| 用户足迹采集（U1） | `L1_data_source/collectors/taptap/crawl_taptap_user.py` | ① 采集侧 | 同上，但是**高成本可选工具**（鸣潮 594 人 / 13 分钟 / 611 次调用），不进每日巡检默认路径 | 分层取样 `--sample stratified` 为默认 |
+| PII 加盐哈希 | `L1_data_source/collectors/taptap/pii_hash.py` | ④ 支撑层（被 ①② 横切共用） | **不属于任何节点，是一条横切约束**——所有产出文本体的出入口都要过它 | HMAC-SHA256，盐在 `.env`；换盐 = 历史哈希全废 |
 | 平台事件感知 | `11情报Agent/platform_insight.py` | ② 感知侧 | 第二段「感知」节点的输入 facts 之一 | **已接入** `daily_agent`（缺失/损坏显式降级，>48h 标 stale）；规则判定，阈值集中在 `EVENT_RULES` |
 | **话题可发酵度判断** | `11情报Agent/ferment_judge.py` | ② 感知侧（**首例 Agent 语义判断**） | 热点 → 创意之间的**判据节点** | ✅ 新（2026-09-29）；取代旧的 `matched_games` 游戏归属判据，详见 §1.2 |
 | 用户流动感知 | `11情报Agent/user_flow.py` | ② 感知侧 | 第二段「感知」节点的输入 facts 之一 | ⚠ **尚未接线**：目前是独立 CLI，手动跑，不进 daily_agent 简报 |
@@ -494,7 +494,7 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 
 > **判变化率是这一层的核心判断**：热度榜上所有话题绝对值都高，「浏览 6583」本身不含任何行动信息；只有「比上次涨了 6 倍」才说明现在接还来得及。绝对值高但持平的话题，状态机**不改状态**（已有单测锁死）。
 
-### 表结构（`11情报Agent/state/topic_tracker.sqlite3`，运行时库、不入 git）
+### 表结构（`data/state/topic_tracker.sqlite3`，运行时库、不入 git）
 
 - `topic_state`：每个话题一行当前态（topic_key / title / hashtag_id / **metric_kind** / first_seen_at / last_seen_at / state / last_metric / peak_metric / sample_count / prev_state / state_changed_at）
 - `topic_series`：append-only 采样序列（topic_key / sampled_at / metric / metric_kind / source）
@@ -607,13 +607,13 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 
 | 域 | 位置 | 允许内容 | 是否入库 |
 |----|------|----------|----------|
-| 原始域 | `02数据/reviews.csv`、`02数据_*` / `02数据_platform`（已 gitignore） | 明文用户标识、昵称、原文 | ❌ 不入库 |
-| 分析域 | `02数据/processed/reviews_clean.csv`、`11情报Agent/outputs/` | **只有**加盐哈希 + 聚合分布 | ✅ 入库 |
+| 原始域 | `data/raw/taptap/reviews.csv`、`data/raw/taptap_*` / `data/raw/taptap`（已 gitignore） | 明文用户标识、昵称、原文 | ❌ 不入库 |
+| 分析域 | `data/processed/reviews/reviews_clean.csv`、`data/outputs/agent/` | **只有**加盐哈希 + 聚合分布 | ✅ 入库 |
 | 产出域 | `reports/`、看板 | 只有聚合（流向矩阵 / 占比 / 分布） | ✅ 入库 |
 
 **⚠️ 2026-09-29 事故复盘（这条边界曾经失守）：**
 
-`.gitignore` 原先写的 `02数据_*/`（**带下划线**）与实际目录 `02数据/`（**无下划线**）不匹配，
+`.gitignore` 原先写的 `data/raw/taptap_*/`（**带下划线**）与实际目录 `data/raw/taptap/`（**无下划线**）不匹配，
 规则静默落空 —— 含明文 `user_name` / `user_id` / `avatar_url` 的 3000 行 `reviews.csv`
 与 `processed/reviews_clean.csv` 自 `85fc148`（2026-07-27）起在公开仓库暴露约两个月。
 
@@ -628,7 +628,7 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 
 三条硬约束：
 1. **哈希必须加盐**。原实现 `sha256(uid)[:16]` 无盐——TapTap 用户标识是 9 位数字（空间 ~10⁹），
-   彩虹表秒级反推，那不叫脱敏。已改为 `HMAC-SHA256(salt, uid)`，盐在 `01爬虫/.env`（不入库）。
+   彩虹表秒级反推，那不叫脱敏。已改为 `HMAC-SHA256(salt, uid)`，盐在 `L1_data_source/collectors/taptap/.env`（不入库）。
    ⚠ 换盐 = 历史哈希全废，需重算。
 2. **只出聚合，不出个体**。报告里不允许出现单个哈希，也不允许出现「某人的轨迹」。
    `user_flow.assert_aggregate_only()` 在写文件前扫渲染文本，命中 16 位十六进制串直接抛错。
@@ -693,7 +693,7 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
 | 47 | **资产四形态归类**：Tool / facts 源 / **Memory** / **缓存**，并给出判据 | ✅ 已拍板（2026-09-30）——见 [能力形态归类](./能力形态归类.md)。★ 最有价值的判据：**问「删了能不能从原始数据重建」——能是缓存，不能才是记忆**。反例：`outputs/*.json` 看着像记忆，其实删了重跑就有（缓存）；`topic_state` 的迁移历史删了就永久丢（记忆） |
 | 48 | **向量库 / RAG：现在不建**（触发线：素材 >500 条 或 样例库 >100 条） | ✅ 已定（2026-09-30）——素材库现在 0 条，**没有可索引的东西**；embedding 还要钱或下模型（余额仍 402）。**跨源对齐先用编辑距离/字符相似（纯标准库）**，不必为"看起来像 RAG"上向量库 |
 | 49 | **MCP 与子 Agent：现在都不引入/不拆**，但边界已天然存在 | ✅ 已定（2026-09-30）——MCP 判据是「需要跨进程/跨语言/被外部调用」，当前单机单进程直调更简单；**`SourceAdapter` 已天然是 MCP server 的边界**。子 Agent：4 图已按「独立 state + 独立存储」设计，**将来要拆只是搬进程**。⚠️ **注意区分「好设计」与「现在要建」** |
-| 50 | **爬虫原始数据不是纯缓存**：技术上可重爬，但**「当时的快照」不可复现**，必须归档保留 | ✅ 已核实（2026-09-30）——本次归类发现的坑。`02数据/raw/` 与 `discovery_*.csv` 属**一次性证据**，不能按"反正能重算"删掉 |
+| 50 | **爬虫原始数据不是纯缓存**：技术上可重爬，但**「当时的快照」不可复现**，必须归档保留 | ✅ 已核实（2026-09-30）——本次归类发现的坑。`data/raw/taptap/raw/` 与 `discovery_*.csv` 属**一次性证据**，不能按"反正能重算"删掉 |
 | 51 | **采样调度器分两级**：探测层固定 15min（1 请求、全景）+ 深采层自适应（按状态 + **可发酵度**） | ✅ 已实现并验证（2026-09-30）——见 [热点追踪设计 §7.0](./热点追踪设计.md)。★ **自适应用可发酵度而非当前热度**，否则会漏掉冷启动（观察者悖论）。频率**已推导**：实测特征时间 24min ÷ 2 = 12min 下界 |
 | 52 | **调度器自己收集校准自己的数据**：`probe_log` 记 `n_changed`，并提供最小样本门槛（<5 不给建议） | ✅ 已实现（2026-09-30）——「有变化」长期为 0 → 采得太密；失败记录 → 可能被限流（**这就是反爬上界的实测方式**）。⚠️ 实测踩过：间隔 1 分钟的两次探测必然 0 变化，会让报告给出错误建议 |
 | 53 | **Windows 上带中文的 `.ps1` 必须存成 UTF-8 with BOM**，且读写都要 `utf-8-sig` | ✅ 已修（2026-09-30）——不加 BOM 会按 ANSI(GBK) 读，中文变乱码后**吃掉引号**直接 ParseException；加 BOM 后若用 `utf-8` 读又用 `utf-8-sig` 写会**双 BOM**。既有 `scripts/refresh_demo.ps1` 一并补了 BOM |
@@ -805,12 +805,12 @@ S4 话题热榜（10 个） → S6 话题下帖子（每话题 8-10 帖） → S
         ⚠️ **2026-09-30 实测更正**：345 条评论的 `content` **全部为空**（345/345），
         帖子的 `supports` 也全 0 —— 「345 评论」只是记录数，**内容与点赞实际不可用**。
         原因待查（采集侧问题），影响素材层的评论类抽取。
-      · 平台发现流：热榜 10 话题 + 发现流/话题帖 118 + 评论 74（S4/S5/S6，02数据_platform/）
+      · 平台发现流：热榜 10 话题 + 发现流/话题帖 118 + 评论 74（S4/S5/S6，data/raw/taptap/）
         ⚠️ **帖子点赞字段是 `ups`（108/118 非空，最高 311），不是 `supports`（全 0）**；
         评论才是 `supports`。两者命名不一致，是采集侧的坑。
         ⚠️ **评论覆盖率仅 25/118 帖**（21%）——约八成 Thread 评论区为空，
         是素材层「金句」类的瓶颈。
-      · 用户流动：鸣潮 **594 人**（高 290 / 低 304，分层取样）× 4051 帖（U1，02数据_wuthering_waves/user_flow/）
+      · 用户流动：鸣潮 **594 人**（高 290 / 低 304，分层取样）× 4051 帖（U1，data/raw/taptap_wuthering_waves/user_flow/）
         —— 从 120 人扩样而来；扩样后高/低流出倍数由 1.85× 收敛到 **1.54×**，说明小样本系统性高估差异
 - 代码：**158 个单元测试全绿**（含 9 个 LangGraph 框架层测试，未装 langgraph 时整组跳过）
       感知层模块：risk_insight / anomaly_lite / community_insight / cross_game_compare /

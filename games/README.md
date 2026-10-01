@@ -8,16 +8,16 @@
 |------|------|--------|
 | `key` | 档案标识（默认取文件名） | 全部脚本 `--game` |
 | `name` | 游戏名（进报告标题 / 标注 prompt / 看板标题） | 标注、日报周报、看板 |
-| `app_id` | TapTap 游戏 ID（采集入口） | `01爬虫`、日报元数据 |
-| `high_hours` | 高投入阈值（小时），展示口径 | `11情报Agent/risk_insight` |
-| `aliases` | 等价名（对照渠软相关过滤） | `06对照_B站`、`08对照_微博` |
-| `cross_channel.bili_keywords` | B 站检索关键词（env 兜底） | `06对照_B站` |
-| `cross_channel.weibo_uids` | 微博官号 uid（时间线降级） | `08对照_微博` |
+| `app_id` | TapTap 游戏 ID（采集入口） | `L1_data_source/collectors/taptap`、日报元数据 |
+| `high_hours` | 高投入阈值（小时），展示口径 | `L4_decision/risk_insight` |
+| `aliases` | 等价名（对照渠软相关过滤） | `data/raw/bilibili`、`data/raw/weibo` |
+| `cross_channel.bili_keywords` | B 站检索关键词（env 兜底） | `data/raw/bilibili` |
+| `cross_channel.weibo_uids` | 微博官号 uid（时间线降级） | `data/raw/weibo` |
 
 ## 接入新游戏（三步）
 
 1. 复制 `arknights.json` 为 `<新游戏>.json`，改 `key` / `name` / `app_id` / `aliases`（其余可留默认）；
-2. 采集：`python 01爬虫/crawl_taptap_reviews.py --game <新游戏>`；
+2. 采集：`python L1_data_source/collectors/taptap/crawl_taptap_reviews.py --game <新游戏>`；
 3. 依次跑清洗 → 标注 → 情报 Agent（`--game <新游戏>`），产出与报告自动带新游戏名。
 
 ```bash

@@ -4,7 +4,7 @@ description: >-
   Runs the daily intel Agent for Arknights TapTap舆情: perceive (facts locked by
   code) → decide (rule engine fallback + optional LLM) → act (deep_dive/routine
   routing) → brief. Use for 每日情报简报, 流失风险分层, 修辞伪装负向识别,
-  agent 架构讲解, or work under 11情报Agent/.
+  agent 架构讲解, or work under L4_decision/.
 license: MIT
 metadata:
   version: "1.0"
@@ -22,7 +22,7 @@ metadata:
 
 ## 何时用
 
-每日情报简报、流失风险分层、修辞伪装负向（讽刺/高级黑/反串）识别、`11情报Agent/` 下任何工作。
+每日情报简报、流失风险分层、修辞伪装负向（讽刺/高级黑/反串）识别、`L4_decision/` 下任何工作。
 
 ## 四步架构
 
@@ -34,19 +34,19 @@ metadata:
 | 4 简报 | `render_brief` | Markdown 简报 | 无 key → 模板（数字仍由 facts 填充） |
 
 > 感知层统计（两比例 z 检验 / Wilson CI）在 `intel_stats.py` 纯标准库实现，
-> 与 10分析实验室口径一致；完整 Kitagawa 三分解仍在分析实验室（需 pandas）。
+> 与 L2_signal/lab口径一致；完整 Kitagawa 三分解仍在分析实验室（需 pandas）。
 
 ## 工作流
 
 ```bash
 # 全链路（无 key：规则决策 + 模板简报）
-python 11情报Agent/daily_agent.py
+python L6_delivery/briefing/daily_agent.py
 
 # LLM 决策与定性（可选增强，非依赖）
-DEEPSEEK_API_KEY=sk-... python 11情报Agent/daily_agent.py
+DEEPSEEK_API_KEY=sk-... python L6_delivery/briefing/daily_agent.py
 
 # 单独跑风险分层（第 2 职责：用户行为洞察）
-python 11情报Agent/risk_insight.py
+python L5_generation/risk_insight.py
 ```
 
 产出：

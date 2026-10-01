@@ -20,20 +20,20 @@ def run(rel: str) -> int:
 
 def main() -> int:
     for rel in (
-        "04日报周报/build_skill_reports.py",
-        "09跨渠道AI/build_channel_facts.py",
-        "05展示页/build_dashboard.py",
+        "L6_delivery/period_reports/build_skill_reports.py",
+        "L2_signal/cross_channel/build_channel_facts.py",
+        "L6_delivery/dashboard/build_dashboard.py",
     ):
         code = run(rel)
         if code != 0:
             print(f"失败：{rel} (exit={code})")
             return code
-    print("\n完成：reports/、facts_cross_channel.json 与 05展示页/index.html 已刷新。")
+    print("\n完成：reports/、facts_cross_channel.json 与 L6_delivery/dashboard/index.html 已刷新。")
     print(
         "跨渠道 AI 简报需单独运行（需 Key）："
-        "python 09跨渠道AI/synthesize_cross_channel.py"
+        "python L2_signal/cross_channel/synthesize_cross_channel.py"
     )
-    print("无 Key 模板演示：python 09跨渠道AI/synthesize_cross_channel.py --template-only")
+    print("无 Key 模板演示：python L2_signal/cross_channel/synthesize_cross_channel.py --template-only")
     return 0
 
 

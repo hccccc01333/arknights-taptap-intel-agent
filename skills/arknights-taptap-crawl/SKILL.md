@@ -4,7 +4,7 @@ description: >-
   Implements or fixes TapTap Arknights review crawling under a verified field
   contract (app_id=70253, list-by-app, checkpoint, compliance). Use when
   writing/debugging the crawler, mapping JSON fields, handling pagination,
-  X-UA env, 403/429, or QC reports under 01爬虫/ or 02数据/.
+  X-UA env, 403/429, or QC reports under L1_data_source/collectors/taptap/ or data/raw/taptap/.
 license: MIT
 metadata:
   version: "1.0"
@@ -26,10 +26,10 @@ metadata:
 
 | 项 | 路径 |
 |----|------|
-| 完整字段契约 | `01爬虫/爬取提示词构建.md` |
-| 接口样本 | `01爬虫/TAPTAP网页数据json` |
-| 环境变量示例 | `01爬虫/config.example.env` |
-| 生产脚本 | `01爬虫/crawl_taptap_reviews.py` |
+| 完整字段契约 | `L1_data_source/collectors/taptap/爬取提示词构建.md` |
+| 接口样本 | `L1_data_source/collectors/taptap/TAPTAP网页数据json` |
+| 环境变量示例 | `L1_data_source/collectors/taptap/config.example.env` |
+| 生产脚本 | `L1_data_source/collectors/taptap/crawl_taptap_reviews.py` |
 
 细则见 [references/contract-checklist.md](references/contract-checklist.md)。
 
@@ -42,7 +42,7 @@ metadata:
    - `TAPTAP_X_UA` 只读环境变量 / `.env`（勿提交密钥）
 3. **停止条件**：空列表、不足 10 条、早于起始日、达上限、撞水位线。  
 4. **合规**：403/429/验证码 → 停或降速，不绕过；公开评价 only。  
-5. **验收**：去重、checkpoint 续跑、run_log、质检报告；输出到 `02数据/reviews.csv`。
+5. **验收**：去重、checkpoint 续跑、run_log、质检报告；输出到 `data/raw/taptap/reviews.csv`。
 
 ## 禁止
 

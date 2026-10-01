@@ -25,7 +25,7 @@ env/
 .workbuddy/
 
 # Local drafts (not for public)
-11提示词工程/
+docs/prompt_engineering/
 **/原始提示词.md
 **/提示词工程复盘.md
 **/原始数据处理提示词.md
@@ -34,17 +34,17 @@ env/
 **/raw/
 **/raw_llm/
 **/checkpoint*.json
-01爬虫/runs/
-02数据/raw/
+L1_data_source/collectors/taptap/runs/
+data/raw/taptap/raw/
 **/run_logs/
 
 # Intermediate annotation churn
-03标注结果/shards/
-03标注结果/annotations.csv
-03标注结果/annotations_v1_1.csv
-03标注结果/annotations_v1_2.csv
-03标注结果/annotations_v1_3.csv
-03标注结果/v1_2_reannotate_ids.txt
+data/annotations/shards/
+data/annotations/annotations.csv
+data/annotations/annotations_v1_1.csv
+data/annotations/annotations_v1_2.csv
+data/annotations/annotations_v1_3.csv
+data/annotations/v1_2_reannotate_ids.txt
 02数据/compare_v1_1_v1_2.py
 02数据/compare_v1_2_v1_3.py
 02数据/compare_v1_3_v1_4.py
@@ -55,30 +55,30 @@ env/
 02数据/build_sample_report.py
 
 # Disposable probes / prototypes
-10分析实验室/_probe_events.py
-10分析实验室/_probe_events2.py
-05展示页/ui_prototype.html
+L2_signal/lab/_probe_events.py
+L2_signal/lab/_probe_events2.py
+L6_delivery/dashboard/ui_prototype.html
 
 # Extra timestamped report spam (keep *_latest and final skill reports)
-03标注结果/reports/annotate_run_*.md
-03标注结果/reports/annotate_sample_*.md
-03标注结果/reports/annotate_v1_1_*.md
-03标注结果/reports/annotate_qc_*.md
-03标注结果/reports/method_v1_3_*.md
-03标注结果/reports/sentiment_*.md
-10分析实验室/reports/model_eval_2026*.md
-10分析实验室/reports/anomaly_diagnosis_2026*.md
-10分析实验室/reports/event_impact_2026*.md
-06对照_B站/reports/annotate_bili_2026*.md
-06对照_B站/reports/crawl_bili_2026*.md
-07对照_抖音/reports/annotate_douyin_2026*.md
-07对照_抖音/reports/crawl_douyin_2026*.md
-08对照_微博/reports/annotate_weibo_2026*.md
-08对照_微博/reports/crawl_weibo_2026*.md
-02数据/reports/crawl_qc_*.md
-02数据/reports/preprocess_qc_*.md
-02数据/run_logs/
-02数据/figures/preprocess_*_2026*.png
+data/annotations/reports/annotate_run_*.md
+data/annotations/reports/annotate_sample_*.md
+data/annotations/reports/annotate_v1_1_*.md
+data/annotations/reports/annotate_qc_*.md
+data/annotations/reports/method_v1_3_*.md
+data/annotations/reports/sentiment_*.md
+L2_signal/lab/reports/model_eval_2026*.md
+L2_signal/lab/reports/anomaly_diagnosis_2026*.md
+L2_signal/lab/reports/event_impact_2026*.md
+L6_delivery/contrast/bilibili/reports/annotate_bili_2026*.md
+L6_delivery/contrast/bilibili/reports/crawl_bili_2026*.md
+L6_delivery/contrast/douyin/reports/annotate_douyin_2026*.md
+L6_delivery/contrast/douyin/reports/crawl_douyin_2026*.md
+L6_delivery/contrast/weibo/reports/annotate_weibo_2026*.md
+L6_delivery/contrast/weibo/reports/crawl_weibo_2026*.md
+data/processed/reviews/reports/crawl_qc_*.md
+data/processed/reviews/reports/preprocess_qc_*.md
+data/raw/taptap/run_logs/
+data/processed/figures/preprocess_*_2026*.png
 
 # Temp helpers
 _*.py
@@ -88,32 +88,32 @@ docs/_*.md
 **/tmp/
 
 # Multi-game validation slices (raw reviews contain PII - never commit)
-02数据_*/
-03标注结果_*/
+data/raw/wuthering-waves/
+data/annotations/wuthering-waves/
 
 # ============================================================
 # 原始域（三域模型第 1 域）—— 永不入库
 #
-# 2026-09-29 事故复盘：上面那条 `02数据_*/`（带下划线）与实际目录
+# 2026-09-29 事故复盘：上面那条 `data/raw/wuthering-waves/`（带下划线）与实际目录
 # `02数据/`（无下划线）不匹配，规则静默落空，导致含明文
 # user_name / user_id / avatar_url 的 3000 行 CSV 被推送到公开仓库
 # 并暴露约两个月。以下改为**显式路径**，不再依赖目录名巧合。
 #
 # reviews.csv 必须保留明文 user_id：U1 用户流动采集
-# （01爬虫/crawl_taptap_user.py）需要它作为接口入参，而加盐哈希不可逆。
+# （L1_data_source/collectors/taptap/crawl_taptap_user.py）需要它作为接口入参，而加盐哈希不可逆。
 # 所以它属于原始域、只留本地；对外只发布分析域的 user_id_hash 版本。
 # ============================================================
-02数据/reviews.csv
-02数据/raw/
-02数据/raw_llm/
+data/raw/taptap/reviews.csv
+data/raw/taptap/raw/
+data/raw/taptap/raw_llm/
 
 # ============================================================
 # 运行时状态库（不进库）
 # topic_tracker 的 SQLite 是**本地运行态**，不是源码：
 # 它按天累积采样，每台机器/每次运行都不同，提交它只会制造冲突；
 # 状态迁移报告同理（reports/*_latest.md 保留，历史快照不入库）。
-# 想复现：跑 `python 11情报Agent/topic_tracker.py --sample` 即可从零重建。
+# 想复现：跑 `python L4_decision/topic_tracker.py --sample` 即可从零重建。
 # ============================================================
-11情报Agent/state/
-11情报Agent/reports/topic_tracker_2026*.md
-11情报Agent/reports/community_ops_2026*.md
+data/state/
+L6_delivery/briefing/reports/topic_tracker_2026*.md
+L6_delivery/briefing/reports/community_ops_2026*.md

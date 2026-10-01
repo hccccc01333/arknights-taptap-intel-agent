@@ -354,7 +354,7 @@ def _assert_state_clean(state: dict) -> None:
 - G3/G4 员工动作：员工可能第二天才点
 
 **所以必须装 `langgraph-checkpoint-sqlite`**（当前 ❌ 未装），用 `SqliteSaver`：
-文件放 `11情报Agent/state/`（已在 `.gitignore`，运行时状态不入库）。
+文件放 `data/state/`（已在 `.gitignore`，运行时状态不入库）。
 
 ⚠️ **这条不做，「人工确认点」就是假的人确认点** —— 进程一重启就丢，员工点了没反应。
 

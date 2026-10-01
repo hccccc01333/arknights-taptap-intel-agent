@@ -4,7 +4,7 @@ description: >-
   Applies and maintains Arknights TapTap review LLM annotation schema v1.4:
   two-stage incongruity/rhetoric then intended sentiment. Use when editing
   annotate prompts, few-shots, rhetoric labels, diagnosing mislabels, or
-  working under 02数据/ or 03标注结果/.
+  working under data/raw/taptap/ or data/annotations/.
 license: MIT
 metadata:
   version: "1.4"
@@ -25,12 +25,12 @@ metadata:
 
 ## 权威源（改口径顺序）
 
-1. 改 `02数据/annotate_reviews.py` 中的 `SYSTEM_PROMPT` / `FEW_SHOTS`  
-2. 同步 `02数据/数据处理提示词.md`  
+1. 改 `data/raw/taptap/annotate_reviews.py` 中的 `SYSTEM_PROMPT` / `FEW_SHOTS`  
+2. 同步 `data/raw/taptap/数据处理提示词.md`  
 3. 同步本 Skill 与 [references/](references/)  
 4. 保留并递增 `prompt_version`；先小样本再扩量  
 
-辅助资料：`03标注结果/讽刺反串高级黑-资料与口径.md`
+辅助资料：`data/annotations/讽刺反串高级黑-资料与口径.md`
 
 ## 强制两段式
 
@@ -58,4 +58,4 @@ metadata:
 
 ## 输出
 
-`03标注结果/annotations_v1_4.csv`
+`data/annotations/annotations_v1_4.csv`

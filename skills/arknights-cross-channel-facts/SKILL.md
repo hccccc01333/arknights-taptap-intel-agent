@@ -3,7 +3,7 @@ name: arknights-cross-channel-facts
 description: >-
   Builds or synthesizes Arknights cross-channel舆情 with facts-locked numbers
   across TapTap, Bilibili, Douyin, and Weibo. Use for 跨渠道简报, 议题对齐,
-  facts锁数, anti-hallucination checks, or work under 09跨渠道AI/.
+  facts锁数, anti-hallucination checks, or work under L2_signal/cross_channel/.
 license: MIT
 metadata:
   version: "1.0"
@@ -20,7 +20,7 @@ metadata:
 
 ## 何时用
 
-跨渠道简报、议题对齐、facts 锁数、防幻觉验收、`09跨渠道AI/`。
+跨渠道简报、议题对齐、facts 锁数、防幻觉验收、`L2_signal/cross_channel/`。
 
 ## 渠道角色
 
@@ -33,9 +33,9 @@ metadata:
 
 ## 工作流
 
-1. `python 09跨渠道AI/build_channel_facts.py` → `facts_cross_channel.json`  
-2. `python 09跨渠道AI/synthesize_cross_channel.py`（无 Key 可用 `--template-only`）  
-3. 可选：`python 05展示页/build_dashboard.py`  
+1. `python L2_signal/cross_channel/build_channel_facts.py` → `facts_cross_channel.json`  
+2. `python L2_signal/cross_channel/synthesize_cross_channel.py`（无 Key 可用 `--template-only`）  
+3. 可选：`python L6_delivery/dashboard/build_dashboard.py`  
 
 锁数协议见 [references/facts-lock-protocol.md](references/facts-lock-protocol.md)。
 
@@ -63,4 +63,4 @@ metadata:
 
 ## 输出
 
-`09跨渠道AI/reports/`（综合简报 + 议题对齐）
+`L2_signal/cross_channel/reports/`（综合简报 + 议题对齐）
