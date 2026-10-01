@@ -42,6 +42,9 @@ RISK_JSON = LAB / "outputs" / "risk_insight.json"
 # 平台级发现流（S4/S5/S6）：由 platform_insight.py 产出，原始数据含社区文本不入库，
 # 故这里只读已聚合的 facts——文件不存在即显式降级，绝不临时补跑爬虫。
 PLATFORM_JSON = LAB / "outputs" / "platform_insight.json"
+# 话题追踪状态（跨天记忆）：由 topic_tracker.py 维护的 SQLite 状态库。
+# 这一维度回答的是「在升温还是退潮」——单看任一天的绝对值回答不了。
+TOPIC_DB = LAB / "state" / "topic_tracker.sqlite3"
 REPORT_DIR = LAB / "reports"
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
@@ -114,6 +117,53 @@ def log_traceback(e: Exception, tool: str) -> None:
     with (LOG_DIR / "agent_run.log").open("a", encoding="utf-8") as f:
         f.write(f"\n[{datetime.now(TZ).isoformat(timespec='seconds')}] {tool} failed\n")
         f.write(traceback.format_exc())
+
+
+def load_topic_state(limit: int = 5) -> dict[str, Any]:
+    """话题追踪状态（跨天记忆）：有则用，无则显式降级。
+
+    这是「追踪」的落地维度——只读状态库、不写。
+    写入由 topic_tracker.py 独立负责（采样时机与频率由调度层决定，
+    不与简报生成耦合，否则「全天监测」会被「每天一跑」绑架）。
+    """
+    if not TOPIC_DB.exists():
+        return {
+            "available": False,
+            "reason": "尚无话题追踪状态（需先跑 topic_tracker.py --sample）",
+        }
+    try:
+        import sqlite3
+        con = sqlite3.connect(str(TOPIC_DB))
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT title, metric_kind, state, last_metric, peak_metric,"
+            " sample_count, first_seen_at, last_seen_at"
+            " FROM topic_state WHERE state IN ('爆发','升温')"
+            " ORDER BY CASE state WHEN '爆发' THEN 0 ELSE 1 END, peak_metric DESC"
+            " LIMIT ?",
+            (limit,),
+        ).fetchall()
+        n_total = con.execute("SELECT COUNT(*) c FROM topic_state").fetchone()["c"]
+        con.close()
+    except Exception as e:
+        return {"available": False, "reason": f"状态库读取失败：{friendly_reason(e)}"}
+
+    return {
+        "available": True,
+        "n_tracked": n_total,
+        "rising": [
+            {
+                "title": r["title"],
+                "metric_kind": r["metric_kind"],
+                "state": r["state"],
+                "latest": r["last_metric"],
+                "peak": r["peak_metric"],
+                "samples": r["sample_count"],
+                "first_seen_at": r["first_seen_at"],
+            }
+            for r in rows
+        ],
+    }
 
 
 def load_platform(max_age_hours: int = 48) -> dict[str, Any]:
@@ -239,6 +289,8 @@ def perceive(skip_anomaly: bool = False) -> dict[str, Any]:
         ),
         # 平台侧（S4/S5/S6）为**可选维度**：无数据不影响主链，只在简报里显式说明
         "platform": load_platform(),
+        # 话题追踪（跨天）：同样是可选维度；回答「在升温还是退潮」
+        "topic_trend": load_topic_state(),
     }
     return facts
 
@@ -513,6 +565,46 @@ def render_brief(action: dict[str, Any], qual: str) -> str:
             "",
             f"- 不可用：{pf.get('reason') or '未知原因'}（显式标注，不估算）",
         ]
+
+    tt = f.get("topic_trend") or {}
+    if tt.get("available"):
+        lines += [
+            "",
+            "## 话题趋势（跨天追踪）",
+            "",
+            f"- 在追踪话题：{tt.get('n_tracked')} 个（含浏览量/互动量两条独立序列）",
+            "",
+        ]
+        rising = tt.get("rising") or []
+        if rising:
+            lines += [
+                "| 话题 | 指标 | 状态 | 当前 | 峰值 | 采样次数 |",
+                "|------|------|------|------|------|----------|",
+            ]
+            kind_cn = {"page_view": "浏览量", "interaction": "互动量"}
+            for r in rising:
+                lines.append(
+                    f"| {r['title']} | {kind_cn.get(r['metric_kind'], r['metric_kind'])} "
+                    f"| {r['state']} | {r['latest']} | {r['peak']} | {r['samples']} |"
+                )
+            lines += [
+                "",
+                "> 状态基于**变化率**而非绝对值：热度榜上人人绝对值都高，"
+                "只有「比上次涨了几倍」才说明现在接还来得及。",
+            ]
+        else:
+            lines += [
+                "- 当前无处于「升温/爆发」的话题（其余话题为冒头/退潮/沉寂）。",
+                "- 说明：话题状态迁移需要至少两次采样——首日全部为「冒头」属正常。",
+            ]
+    else:
+        lines += [
+            "",
+            "## 话题趋势（跨天追踪）",
+            "",
+            f"- 不可用：{tt.get('reason') or '未知原因'}（显式标注，不估算）",
+        ]
+
     lines += [
         "",
         "## 边界",
@@ -520,6 +612,8 @@ def render_brief(action: dict[str, Any], qual: str) -> str:
         "- 舆情侧风险信号，非流失预测；数字全部来自 facts JSON（代码计算）。",
         "- 传播维度数据不可用时显式标注，不估算。",
         "- 平台侧为可选维度，无数据时显式降级；发现流是推荐流采样，不代表全站全量。",
+        "- 话题趋势的状态阈值（1.5×/3.0×/0.6×）为默认值，"
+        "**未经真实运营反馈校准**，不要当可信参数使用。",
         "",
         "---",
         "",

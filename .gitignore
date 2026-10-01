@@ -106,3 +106,14 @@ docs/_*.md
 02数据/reviews.csv
 02数据/raw/
 02数据/raw_llm/
+
+# ============================================================
+# 运行时状态库（不进库）
+# topic_tracker 的 SQLite 是**本地运行态**，不是源码：
+# 它按天累积采样，每台机器/每次运行都不同，提交它只会制造冲突；
+# 状态迁移报告同理（reports/*_latest.md 保留，历史快照不入库）。
+# 想复现：跑 `python 11情报Agent/topic_tracker.py --sample` 即可从零重建。
+# ============================================================
+11情报Agent/state/
+11情报Agent/reports/topic_tracker_2026*.md
+11情报Agent/reports/community_ops_2026*.md

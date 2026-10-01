@@ -99,7 +99,9 @@ python scripts/refresh_demo.py
 # 每日情报 Agent（感知 → 决策 → 行动 → 简报；无 Key 走规则模式）
 python 11情报Agent/risk_insight.py          # 流失风险分层
 python 11情报Agent/anomaly_lite.py          # 零依赖异动感知（近 4 窗检验）
-python 11情报Agent/daily_agent.py           # 当日情报简报
+python 11情报Agent/topic_tracker.py --sample    # 话题采样（写入跨天状态库）
+python 11情报Agent/topic_tracker.py --snapshot  # 查看话题生命周期状态
+python 11情报Agent/daily_agent.py           # 当日情报简报（含跨天话题趋势）
 
 # 清洗与标注（标注需 API Key）
 python 02数据/preprocess_reviews.py
@@ -131,8 +133,8 @@ python 11情报Agent/cross_game_compare.py \
   --clean "明日方舟=02数据/processed/reviews_clean.csv" \
   --clean "鸣潮=02数据_wuthering_waves/processed/reviews_clean.csv"
 
-# 单元测试（纯标准库，55+ 个用例）
-python -m unittest discover -s 11情报Agent/tests -v
+# 单元测试（纯标准库，158 个用例；装 langgraph 则框架层测试一并执行，未装则整组跳过）
+python -m unittest discover -s 11情报Agent/tests -p "test_*.py"
 ```
 
 ---
@@ -148,7 +150,8 @@ python -m unittest discover -s 11情报Agent/tests -v
 06–08对照_*/     B站 / 抖音 / 微博
 09跨渠道AI/      facts 锁数 + 综合简报
 10分析实验室/    异动 / 评估 / 事件
-11情报Agent/     每日情报 Agent（风险分层 + 决策路由 + 简报）
+11情报Agent/     每日情报 Agent（风险分层 + 决策路由 + 话题追踪 + 简报）
+                   └ state/  话题状态库（运行时，不入 git）
 games/           游戏档案（参数化入口：换档案即换游戏）
 skills/          Agent Skills（唯一 Skill 源目录）
 docs/            方法论与构建说明
@@ -182,6 +185,8 @@ python scripts/sync_agent_skills.py
 - 模型评估在人工金标回收前可能使用 proxy 口径，见分析实验室报告  
 - 风险分层是**舆情侧风险信号**（发声用户口径），不是用户流失预测；无留存 / 回流数据前不做因果与转化归因  
 - 高投入阈值为展示口径（默认 ≥100h，`--high-hours` 可配置），分位点校准参考见风险分层报告  
+- 话题追踪的状态阈值（1.5×/3.0×/0.6×）为默认值，**未经真实运营反馈校准**，不得当可信参数使用  
+- 话题归一目前是字面级（全半角 / 标点 / 话题标签），同义不同形的表述仍会分裂成两条线  
 
 ---
 
@@ -192,10 +197,37 @@ python scripts/sync_agent_skills.py
 - [x] 分析实验室（异动 / 评估 / 事件）  
 - [x] Agent Skills 打包（`skills/`，5 个）  
 - [x] 每日情报 Agent（感知 / 决策路由 / 简报）+ 舆情侧风险分层  
-- [x] 零依赖感知层（`intel_stats` 统计）+ 48 个单元测试 + CI  
-- [ ] LLM 决策与定性路径实跑验证（当前规则模式全链路可用）  
+- [x] 零依赖感知层（`intel_stats` 统计）+ 475 个单元测试 + CI  
+- [x] **话题跨天追踪**（`topic_tracker.py` 状态机：冒头→升温→爆发→退潮→沉寂，SQLite 持久化）  
+- [x] **社区运营模块**（`community_ops.py`：话题机会 / 风险预警 / 内容候选 / 动作闭环）  
+- [x] **采样调度器**（`scheduler.py`：探测 15min + 深采自适应；**自己收集校准自己的数据**）
+      无窗口运行：计划任务走 `pythonw.exe` + 子进程 `CREATE_NO_WINDOW`（`harness.exec_command` 统一出口）
+      ＋ 进程自隐控制台兜底 `suppress_console()`（仅当控制台为本进程独有时，绝不误隐用户终端）
+- [x] **事件流与触发链**（`events.py`：状态迁移 → 事件 → 分发订阅者；幂等 + 失败隔离）
+- [x] **特征落盘**（`features.py`：F1–F7 先算不判，JSONL 积累为 ML 铺路；自建帖子快照库攒 F2/F3）
+- [x] **任务契约 + harness**（`task_contracts.py` 任务注册表 · `harness.py` 校验/预算/幂等/失败分派/轨迹 ·
+      单例锁防 tick 重叠；**第一个真 tool 已装进任务**，轨迹可回放）
+- [x] **素材层（T5）**（`materials.py`：原帖引用 + 热评金句候选，**溯源准入闸门**（没有溯源就不算素材）、
+      PII 不入库、存 Thread 不存孤立评论；梗/二创角度需 LLM → 显式标注缺失）
+- [x] **巡检图（LangGraph，契约驱动）**（`agent_graph.py`：**节点由契约的工具链生成，同一张图跑任何任务** + 有界重试环 + `State` 守卫 + SQLite checkpointer
+      跨进程恢复 + `interrupt` 人工确认点；**调度器探测链已收成 1 步 = 跑图**，时钟驱动任务而非脚本）
+      频率已推导（实测特征时间 24min ÷ 2 = 12min 下界）；两级分离 + 用可发酵度避开冷启动悖论
+- [ ] **Agent 框架落地**（LangGraph 4 图 / 32 节点 / 7 条件边 / 2 环 / 3 中断点，按 P1→P2→P3 分期）
+      设计见 `docs/Agent框架落地设计.md`；框架层回归测试已就位（9 用例）
+- [ ] **交付层（当前最大的洞）**：产出是本地 `reports/*.md`，无推送 / 看板 / 权限 ——
+      **员工目前看不到任何东西**。12 个员工功能里 3 个「文件已生成」、6 个「设计完未写码」、3 个未动工
+- [ ] 话题追踪阈值校准（当前 1.5×/3.0×/0.6× 为默认值，未经运营反馈校准）  
+- [x] 采样调度器（探测 15min + 深采自适应），把「每天一跑」升级为全天监测  
+- [ ] **情报素材层**（4 类：原帖引用 / 热评金句 / 梗 / 二创角度）
+      设计已定稿见 `docs/素材层设计.md`（Thread 为单元 · 溯源必带 · LLM 仲裁 · 置信度路由）；
+      前两类判据清楚、不依赖 LLM，可先落地
+- [ ] 增长创意生成（热点 → 面向社区的实际增长创意）
+      设计见 `docs/创意生成与闭环设计.md`（提示词五要素 + 自评 + 示例 + 人类反馈闭环）
+- [ ] LLM 决策与定性路径实跑验证（当前规则模式全链路可用；余额 402 阻塞）  
 - [ ] 人工金标回收后输出正式一致率  
 - [ ] 传播维度：修复 support_count 采集后激活「高传播差评」层  
+- [ ] **评论采集覆盖率**（当前仅 25/118 帖有评论，21%）—— 素材层「金句」类的瓶颈
+- [ ] **鸣潮 345 条评论内容为空**（采集侧问题，待查）
 - [ ] 对照渠在可用 Cookie 下提升真采样占比  
 
 ---

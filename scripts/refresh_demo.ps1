@@ -1,4 +1,4 @@
-# 一键刷新演示：Skill 日/周报 + 跨渠 facts + 离线看板（不爬、不标、不调 LLM 合成）
+﻿# 一键刷新演示：Skill 日/周报 + 跨渠 facts + 离线看板（不爬、不标、不调 LLM 合成）
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root

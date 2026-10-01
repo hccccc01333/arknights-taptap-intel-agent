@@ -12,6 +12,17 @@
     "bili_keywords": "明日方舟",
     "weibo_uids": "6441486180"
   },
-  "notes": "高投入阈值 100h 为展示口径（明日方舟存量游戏语境），可用 --high-hours 覆盖；aliases 用于对照渠过滤。",
-  "data_dir": "02数据"
+  "notes": "高投入阈值 100h 为展示口径（明日方舟存量游戏语境），可用 --high-hours 覆盖；aliases 用于对照渠过滤。 | group_id=53933 由社区页 HTML 自寻（2026-09-30）",
+  "data_dir": "02数据",
+  "group_id": 53933,
+  "official_account": {
+    "user_id": 16966303,
+    "name": "明日方舟AI四号机",
+    "status": "已验证",
+    "verified_at": "2026-09-30",
+    "fans": 125144,
+    "evidence": "by-user 拉 10 条 → 10 条 is_official 且有正文；内容为【中坚寻访】起止时间、【闪断更新公告】等排期公告",
+    "how_found": "社区页「官方」tab (/app/70253/topic?type=official) 的 sidebar/v1/list?type=group_detail&group_id=53933 → 「版主」段首项（12.5万粉丝）",
+    "note": "同一段还有 16704602「明日方舟PRTS活动速递」(4.3万粉丝)，实测 10 条里 0 条有正文 —— 疑似转发型账号，未采用"
+  }
 }

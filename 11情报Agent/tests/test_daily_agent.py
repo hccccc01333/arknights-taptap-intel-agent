@@ -220,6 +220,152 @@ class TestBriefRendering(unittest.TestCase):
         self.assertIn("36.93", text)
 
 
+class TestTopicTrendFacts(unittest.TestCase):
+    """话题追踪（跨天）作为 facts 可选维度：缺失显式降级，有则渲染表格。
+
+    这一维度回答「在升温还是退潮」，是「热点需要追踪」的落地点。
+    测试要锁死两件事：(1) 状态库缺失绝不静默变成「无趋势」；
+    (2) 简报里必须带阈值未校准的警示——阈值是拍的，不能当可信参数。
+    """
+
+    def _make_db(self, rows):
+        """建一个最小 topic_state 库，返回临时路径。"""
+        import sqlite3
+        import tempfile
+
+        tmpdir = tempfile.mkdtemp()
+        db = Path(tmpdir) / "topic.sqlite3"
+        con = sqlite3.connect(str(db))
+        con.execute(
+            "CREATE TABLE topic_state ("
+            " topic_key TEXT PRIMARY KEY, title TEXT, hashtag_id TEXT,"
+            " metric_kind TEXT, first_seen_at TEXT, last_seen_at TEXT,"
+            " state TEXT, last_metric INTEGER, peak_metric INTEGER,"
+            " sample_count INTEGER, prev_state TEXT, state_changed_at TEXT)"
+        )
+        for r in rows:
+            con.execute(
+                "INSERT INTO topic_state (topic_key, title, hashtag_id, metric_kind,"
+                " first_seen_at, last_seen_at, state, last_metric, peak_metric,"
+                " sample_count, prev_state, state_changed_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                r,
+            )
+        con.commit()
+        con.close()
+        return db
+
+    @staticmethod
+    def _row(key, title, kind, state, last, peak, samples=3):
+        return (key, title, "", kind, "2026-09-27T10:00:00+08:00",
+                "2026-09-29T10:00:00+08:00", state, last, peak, samples, "冒头",
+                "2026-09-29T10:00:00+08:00")
+
+    def test_missing_db_degrades_explicitly(self):
+        with mock.patch.object(da, "TOPIC_DB", Path("/nonexistent/topic.sqlite3")):
+            tt = da.load_topic_state()
+        self.assertFalse(tt["available"])
+        self.assertIn("尚无话题追踪状态", tt["reason"])
+
+    def test_broken_db_degrades_not_raises(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".sqlite3", delete=False) as f:
+            f.write("this is not a sqlite file")
+            bad = Path(f.name)
+        try:
+            with mock.patch.object(da, "TOPIC_DB", bad):
+                tt = da.load_topic_state()
+            self.assertFalse(tt["available"])
+            self.assertIn("状态库读取失败", tt["reason"])
+        finally:
+            # Windows 上 sqlite 可能仍持有句柄；清理失败不应让测试失败
+            try:
+                bad.unlink()
+            except (PermissionError, OSError):
+                pass
+
+    def test_returns_only_rising_and_bursting(self):
+        db = self._make_db([
+            self._row("tit:甲|page_view", "甲", "page_view", "爆发", 9000, 9000),
+            self._row("tit:乙|page_view", "乙", "page_view", "升温", 300, 300),
+            self._row("tit:丙|page_view", "丙", "page_view", "冒头", 100, 100),
+            self._row("tit:丁|page_view", "丁", "page_view", "退潮", 50, 900),
+        ])
+        with mock.patch.object(da, "TOPIC_DB", db):
+            tt = da.load_topic_state()
+        self.assertTrue(tt["available"])
+        self.assertEqual(tt["n_tracked"], 4)
+        titles = [r["title"] for r in tt["rising"]]
+        self.assertEqual(titles, ["甲", "乙"])  # 爆发排前，冒头/退潮不入选
+
+    def test_metric_kind_preserved_in_facts(self):
+        db = self._make_db([
+            self._row("hid:5|page_view", "三角洲行动二周年", "page_view", "爆发", 6583, 6583),
+            self._row("hid:5|interaction", "三角洲行动二周年", "interaction", "爆发", 39, 39),
+        ])
+        with mock.patch.object(da, "TOPIC_DB", db):
+            tt = da.load_topic_state()
+        kinds = sorted(r["metric_kind"] for r in tt["rising"])
+        self.assertEqual(kinds, ["interaction", "page_view"])
+
+    def test_limit_caps_rows(self):
+        db = self._make_db([
+            self._row(f"tit:{i}|page_view", f"话题{i}", "page_view", "爆发", 1000 - i, 1000)
+            for i in range(8)
+        ])
+        with mock.patch.object(da, "TOPIC_DB", db):
+            tt = da.load_topic_state(limit=3)
+        self.assertEqual(len(tt["rising"]), 3)
+
+    def test_brief_renders_trend_section_with_warning(self):
+        facts = make_facts()
+        facts["topic_trend"] = {
+            "available": True,
+            "n_tracked": 14,
+            "rising": [{
+                "title": "米哈游反舞弊通报", "metric_kind": "page_view",
+                "state": "爆发", "latest": 38520, "peak": 38520,
+                "samples": 2, "first_seen_at": "2026-09-27T10:00:00+08:00",
+            }],
+        }
+        brief = da.render_brief(da.act(facts, da.rule_decision(facts)), "定性文本")
+        self.assertIn("话题趋势（跨天追踪）", brief)
+        self.assertIn("米哈游反舞弊通报", brief)
+        self.assertIn("浏览量", brief)          # metric_kind 已中文化
+        self.assertIn("变化率", brief)          # 说明判据是变化率
+        self.assertIn("未经真实运营反馈校准", brief)  # 阈值警示必须在
+
+    def test_brief_explains_first_day_when_no_rising(self):
+        facts = make_facts()
+        facts["topic_trend"] = {"available": True, "n_tracked": 10, "rising": []}
+        brief = da.render_brief(da.act(facts, da.rule_decision(facts)), "定性文本")
+        self.assertIn("话题趋势（跨天追踪）", brief)
+        self.assertIn("首日全部为「冒头」属正常", brief)
+
+    def test_brief_marks_unavailable_not_silent(self):
+        facts = make_facts()
+        facts["topic_trend"] = {"available": False, "reason": "尚无话题追踪状态"}
+        brief = da.render_brief(da.act(facts, da.rule_decision(facts)), "定性文本")
+        self.assertIn("话题趋势（跨天追踪）", brief)
+        self.assertIn("不可用", brief)
+        self.assertIn("尚无话题追踪状态", brief)
+
+    def test_missing_key_treated_as_unavailable(self):
+        # 老 facts（无 topic_trend 键）不能让渲染崩掉
+        facts = make_facts()
+        self.assertNotIn("topic_trend", facts)
+        brief = da.render_brief(da.act(facts, da.rule_decision(facts)), "定性文本")
+        self.assertIn("话题趋势（跨天追踪）", brief)
+        self.assertIn("不可用", brief)
+
+    def test_topic_trend_does_not_change_decision(self):
+        # 追踪维度是「信息」不是「决策项」：不应干扰规则决策
+        facts = make_facts(significant=True, delta_pp=19.22)
+        facts["topic_trend"] = {"available": True, "n_tracked": 3, "rising": []}
+        self.assertEqual(da.rule_decision(facts)["mode"], "deep_dive")
+
+
 class TestModelRouting(unittest.TestCase):
     """DeepSeek 模型分层路由 + 退役模型名回归锁。
 

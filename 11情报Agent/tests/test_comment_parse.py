@@ -12,6 +12,7 @@ TapTap 评论正文有两种形态（2026-09-29 实测）：
 """
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import sys
 import types
@@ -25,6 +26,10 @@ if importlib.util.find_spec("requests") is None:  # pragma: no cover - CI 环境
     _stub = types.ModuleType("requests")
     _stub.Session = object
     _stub.RequestException = Exception
+    # ⚠️ 必须给桩一个合法的 __spec__：否则它进 sys.modules 后，
+    # 后续任何 importlib.util.find_spec("requests") 都会抛
+    # ValueError: requests.__spec__ is None（实测踩过，会让别的测试莫名失败）。
+    _stub.__spec__ = importlib.machinery.ModuleSpec("requests", None)
     sys.modules["requests"] = _stub
 
 from crawl_taptap_community import flatten_contents, parse_comment  # noqa: E402

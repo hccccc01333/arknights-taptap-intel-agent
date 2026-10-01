@@ -14,5 +14,12 @@
   },
   "notes": "第二款验证游戏：验证管线可复用性与跨游戏同主题对比。high_hours 与明日方舟同口径（100h）。group_id=330015 经 topic 页 HTML /group/ 链接自寻 + feed 接口验证（2026-09-29）。",
   "data_dir": "02数据_wuthering_waves",
-  "group_id": 330015
+  "group_id": 330015,
+  "official_account": {
+    "user_id": 429475503,
+    "name": "鸣潮",
+    "status": "已验证",
+    "verified_at": "2026-09-30",
+    "evidence": "by-user 接口返回 is_official=true，topic.summary 为该游戏公告正文（文字版）"
+  }
 }
