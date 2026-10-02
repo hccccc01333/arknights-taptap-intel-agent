@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS trend_event (
     platforms           TEXT,
     representative_content_id TEXT,
     split_flag          INTEGER DEFAULT 0,
+    parent_event_id     TEXT,
     metadata            TEXT,
     engine_version      TEXT
 );
@@ -122,7 +123,35 @@ class EventStore:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_DDL)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """加列迁移：老库没有 parent_event_id。缺列才加，已存在就跳过。"""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(trend_event)").fetchall()}
+        if "parent_event_id" not in cols:
+            self.conn.execute("ALTER TABLE trend_event ADD COLUMN parent_event_id TEXT")
+
+    # ---------- 父子事件（§42）----------
+    def set_parent(self, child_id: str, parent_id: Optional[str]) -> None:
+        self.conn.execute("UPDATE trend_event SET parent_event_id=? WHERE event_id=?",
+                          (parent_id, child_id))
+
+    def clear_parents(self) -> None:
+        """每轮重算前清空（父子关系是派生的，不累积）。"""
+        self.conn.execute("UPDATE trend_event SET parent_event_id=NULL")
+
+    def children_of(self, parent_id: str) -> List[str]:
+        return [r["event_id"] for r in self.conn.execute(
+            "SELECT event_id FROM trend_event WHERE parent_event_id=?", (parent_id,)).fetchall()]
+
+    def parent_child_counts(self) -> Dict[str, int]:
+        n_child = self.conn.execute(
+            "SELECT COUNT(*) FROM trend_event WHERE parent_event_id IS NOT NULL").fetchone()[0]
+        n_parent = self.conn.execute(
+            "SELECT COUNT(DISTINCT parent_event_id) FROM trend_event WHERE parent_event_id IS NOT NULL"
+        ).fetchone()[0]
+        return {"children": n_child, "parents": n_parent}
 
     # ---------- event ----------
     def upsert_event(self, e: Dict[str, Any]) -> None:

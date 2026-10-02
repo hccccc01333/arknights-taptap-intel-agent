@@ -148,13 +148,58 @@ Confidence 是可信的（0.776 / 0.607）：它衡量"证据够不够"，不依
 
 ---
 
+## 6.5 评估（§4 / §38 / §39）—— `evaluation.py`
+
+`python L3_trend/trend_engine/pipeline.py --eval`
+
+### ★ 先做前置条件体检：这批数据有没有"时间分辨率"
+
+**实测结论：没有。1198 条候选内容的观测时间跨度 = 0.011 小时（40 秒），去重后只有 8 个时刻。**
+整批数据是一次性抓完的。因此：
+
+| 结构性失效（inert） | 仍然可用 |
+|---|---|
+| velocity / acceleration / burst / 生命周期 / 检测延迟 / Lead Time | confidence / 体量 / 平台数 / 扩散静态占比 / engagement / credibility / novelty |
+
+这比"Hot Score 偏低"更进一步：**不是评得不准，是时间维度根本不存在**。
+模块会在 `temporal_resolution.status = no_temporal_resolution` 时把上述指标**整体标为不可用**，
+而不是输出一片 0 让人误读成"系统反应极快、全程无异常"。
+
+### 检测延迟（§4）两种口径必须分开报
+
+- `first_seen`（first_detected_at − started_at）：**批量重放下结构性恒为 0**，
+  检测到后标 `first_seen_degenerate=True` 并给出告警。报"平均延迟 0 小时"是自欺。
+- `recognition`（started_at → 第 k 条内容到达，默认 k=3）：语义是"多久聚集到足以称为事件的证据量"，
+  不依赖是否实时采集。本数据上也是 0（max 0.01h），与时间分辨率体检的结论一致。
+
+真提前量（Lead Time）必须对照**外部峰值时刻**，见下。
+
+### 聚类评估（§39）
+
+- 无标注的代理指标（现在能算）：单例率 **77.6%**（按事件数）、**83.0% 的内容在多成员事件里**（按内容数）、
+  簇内平均相似度 **0.49**、跨平台率 4.9%。
+  两个口径差很多：单例事件数量多，但它们只占 17% 的内容。
+- 需要人工标注才算：`clustering_metrics()` 给 pairwise P/R/F1、**ARI**、NMI、Purity。
+  传 `--cluster-truth` 标注 JSON（`{content_id: 事件标}`）即可算。
+
+### 检测评估（§38）
+
+Precision / Recall / **Lead Time** 依赖外部真值（`{event_key: 爆发时刻}`）。
+**没有真值就不给数字** —— 用系统自己的 hot_score 去证明"系统发现得准"是循环论证。
+未传 `--detection-truth` 时返回 `no_ground_truth` 并列出需要什么，不产出任何分数。
+
+---
+
 ## 7. 已知限制
 
 1. **无 embedding**：相似度是词汇级，改写过的同一事件抓不到。
+1.1 **单例率偏高**：77.6% 的事件只有 1 条内容（在无 embedding、词汇级相似度的降级模式下，
+    大量内容找不到同事件伙伴）。按内容数看 83% 已进入多成员事件，但**聚类质量仍需人工标注裁定**。
 2. **baseline 样本不足**：只有一次采集，`EntityBaseline` 多数实体样本 < 20 → 标 `sufficient=False`，
    置信度自动 ×0.8。相对速度（§16）在真实连续采集下才有意义。
 3. **Detection Lead Time 无法计算**：需要外部峰值时间（如微博热搜进入 Top10 的时刻），本机没有。
-   字段（`started_at` / `first_detected_at`）已分开存好，接了外部基准就能算。
+   字段（`started_at` / `first_detected_at`）已分开存好，函数（`detection_eval`）已实现，
+   接了外部基准传 `--detection-truth` 就能算。**现在不给数字，也不估算。**
 4. **Split 只报警不自动拆**（§11）：规则乱拆比不拆更糟，MVP 只产出证据（`needs_split`）。
 5. **Event 命名走规则**（§13）：无 LLM key，用「主实体 + 关键词 + 事件动词」生成，标 `title_source=rule`。
    规格说这里可以用轻量 LLM —— 接 key 后替换即可。
@@ -169,14 +214,15 @@ L3_trend/
 ├── trend_engine/
 │   ├── candidate.py     Candidate Filter（§5）
 │   ├── similarity.py    六因子相似度（§7/§8）
-│   ├── clustering.py    在线匹配 + Merge/Split + Centroid + 命名（§9-§13）
+│   ├── clustering.py    在线匹配 + Merge/Split + Centroid + 命名 + 父子事件（§9-§13, §42）
 │   ├── timeseries.py    多尺度窗口 + 实体级 baseline（§14/§15/§17）
 │   ├── signals.py       V/A/Burst/Novelty/Diffusion/Engagement/Diversity/Credibility（§16-§27）
 │   ├── scoring.py       Hot / Momentum / Confidence / Rank（§28-§35）
 │   ├── lifecycle.py     状态机 + Opportunity Window（§31-§33）
 │   ├── store.py         Event Store + Score History + Lifecycle History（§4/§36/§37）
 │   ├── feedback.py      闭环调频 + 第四层触发门（§40/§41/§46/§47）
-│   └── pipeline.py      ★ 入口
+│   ├── evaluation.py    时间分辨率体检 + 检测延迟 + 聚类/检测评估（§4/§38/§39）
+│   └── pipeline.py      ★ 入口（--run / --eval / --top / --show / --stats）
 ├── topic_tracker.py     既有：跨天话题状态（迁自原 L4_decision）
 ├── ferment_judge.py     既有：可发酵度判断
 ├── events.py freshness.py anomaly_lite.py intel_stats.py

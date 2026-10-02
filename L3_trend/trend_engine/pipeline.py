@@ -35,7 +35,8 @@ from processing.storage import ProcessedStore                 # noqa: E402  (L2)
 from bus.event_bus import EventBus                            # noqa: E402  (L1)
 from trend_engine.candidate import filter_candidates          # noqa: E402
 from trend_engine.similarity import SimilarityEngine          # noqa: E402
-from trend_engine.clustering import EventClusterer            # noqa: E402
+from trend_engine.clustering import EventClusterer, resolve_parent_child  # noqa: E402
+from trend_engine.evaluation import evaluate                  # noqa: E402
 from trend_engine.timeseries import EventTimeSeries, EntityBaseline  # noqa: E402
 from trend_engine import signals as S                         # noqa: E402
 from trend_engine.scoring import hot_score, momentum_score, confidence_score, rank_score  # noqa: E402
@@ -123,6 +124,24 @@ class TrendEngine:
                 scored.append(out)
 
         scored.sort(key=lambda e: -(e.get("opportunity_score") or 0))
+
+        # —— §42 父子事件（派生关系，每轮重算）——
+        self.store.clear_parents()
+        pc_links = resolve_parent_child(events)
+        for link in pc_links:
+            self.store.set_parent(link["child"], link["parent"])
+        self.store.conn.commit()
+        pc_counts = self.store.parent_child_counts()
+
+        # —— §38/39 评估（缺 ground truth 的项不给数字）——
+        sims_by_event: Dict[str, List[float]] = {}
+        for ev in events:
+            sims_by_event[ev["event_id"]] = [
+                r[0] for r in self.store.conn.execute(
+                    "SELECT similarity_score FROM event_content WHERE event_id=? AND similarity_score IS NOT NULL",
+                    (ev["event_id"],)).fetchall()]
+        evaluation = evaluate(events, member_index, sims_by_event)
+
         elapsed = (datetime.now() - started).total_seconds()
         return {
             "engine_version": TREND_ENGINE_VERSION,
@@ -133,6 +152,8 @@ class TrendEngine:
             "merges": merge_done,
             "scored": len(scored),
             "lifecycle_counts": self.store.lifecycle_counts(),
+            "parent_child": {**pc_counts, "links": pc_links[:5]},
+            "evaluation": evaluation,
             "elapsed_seconds": round(elapsed, 1),
             "top": [{"event_id": e["event_id"], "title": e.get("canonical_title"),
                      "lifecycle": e.get("lifecycle"), "hot": e.get("hot_score"),
@@ -306,6 +327,9 @@ def main(argv=None) -> int:
                     choices=["hot_score", "momentum_score", "confidence_score", "opportunity_score"])
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--show", help="查看单个事件（含分数历史）")
+    ap.add_argument("--eval", action="store_true", help="输出评估结果（检测延迟/聚类一致性/缺什么真值）")
+    ap.add_argument("--cluster-truth", help="人工标注 JSON：{content_id: 事件标} → 算 ARI/NMI")
+    ap.add_argument("--detection-truth", help="外部真值 JSON：{event_key: 爆发时刻} → 算 Precision/Recall/LeadTime")
     args = ap.parse_args(argv)
 
     eng = TrendEngine()
@@ -317,6 +341,27 @@ def main(argv=None) -> int:
         st = eng.store
         print(f"\n事件总数: {st.count_events()}   成员关联数: {st.count_members()}")
         print("生命周期分布:", json.dumps(st.lifecycle_counts(), ensure_ascii=False))
+        print("父子事件:", json.dumps(st.parent_child_counts(), ensure_ascii=False))
+        return 0
+    if args.eval:
+        from trend_engine.evaluation import evaluate as _eval
+        st = eng.store
+        events = st.list_events(limit=5000)
+        # 必须拿到真实成员（带 observed_at），否则时间分辨率体检会误报 no_timestamps
+        members = eng._member_index()
+        sims: Dict[str, List[float]] = {}
+        for e in events:
+            sims[e["event_id"]] = [r[0] for r in st.conn.execute(
+                "SELECT similarity_score FROM event_content WHERE event_id=? AND similarity_score IS NOT NULL",
+                (e["event_id"],)).fetchall()]
+        truth = None
+        if args.cluster_truth:
+            truth = json.load(open(args.cluster_truth, encoding="utf-8"))
+        dtruth = None
+        if args.detection_truth:
+            dtruth = json.load(open(args.detection_truth, encoding="utf-8"))
+        print(json.dumps(_eval(events, members, sims, cluster_truth=truth,
+                               detection_truth=dtruth), ensure_ascii=False, indent=2))
         return 0
     if args.show:
         ev = eng.store.get_event(args.show)

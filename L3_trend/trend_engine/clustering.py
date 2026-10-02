@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import datetime, timedelta
@@ -204,3 +205,79 @@ class EventClusterer:
         return {"representative": scored[0][1].get("content_id"),
                 "weights": [{"content_id": m.get("content_id"), "weight": round(w, 3)}
                             for w, m in scored[:5]]}
+
+
+# ------------------------------------------------------------------ §42 父子事件
+
+def resolve_parent_child(events: List[Dict[str, Any]],
+                         size_ratio: float = 2.0,
+                         entity_overlap_min: float = 0.5) -> List[Dict[str, Any]]:
+    """§42：大事件下挂子事件（Parent / Child）。
+
+    例如 "GTA6 新预告" 下面会出现：新角色 / 地图分析 / 发售日期 / 画质争议 / 梗图 / 预购讨论。
+    这些子事件**不该与父事件合并**（合并会丢掉角度差异），也不该完全独立（看不出它们同属一个大事件）。
+
+    ★ 判定刻意保守，三条同时成立才挂父子：
+      ① 体量悬殊：parent.content_count ≥ size_ratio × child.content_count
+      ② 实体包含：child 的实体基本被 parent 覆盖（Jaccard ≥ entity_overlap_min）
+      ③ 时间包含：child 的时间窗落在 parent 的时间窗内
+
+      取**满足条件的"最小" parent**（最接近的一层），而不是最大那个 —— 否则所有子事件
+      会直接挂到顶层大事件上，父子层级退化成两层扁平结构。
+
+    ⚠️ 只在三条都成立时挂；挂不上就留 NULL。**不猜**。
+    """
+    def _ents(e: Dict[str, Any]) -> set:
+        v = e.get("entity_ids")
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except (ValueError, TypeError):
+                v = []
+        return set(v or [])
+
+    def _t(e: Dict[str, Any], key: str) -> Optional[datetime]:
+        v = e.get(key)
+        try:
+            return datetime.fromisoformat(v) if v else None
+        except (ValueError, TypeError):
+            return None
+
+    active = [e for e in events if (e.get("status") or "active") == "active"]
+    out: List[Dict[str, Any]] = []
+    for child in active:
+        ce, cn = _ents(child), int(child.get("content_count") or 0)
+        cs, ce_ = _t(child, "started_at"), _t(child, "last_updated_at") or _t(child, "started_at")
+        if not ce or cn <= 0:
+            continue
+        cands = []
+        for p in active:
+            if p["event_id"] == child["event_id"]:
+                continue
+            pn = int(p.get("content_count") or 0)
+            if pn < size_ratio * cn:                       # ① 体量
+                continue
+            pe = _ents(p)
+            if not pe:
+                continue
+            inter = len(ce & pe)
+            j = inter / len(ce | pe) if (ce | pe) else 0.0
+            if j < entity_overlap_min or inter < len(ce) * 0.8:   # ② 实体包含
+                continue
+            ps, pe_ = _t(p, "started_at"), _t(p, "last_updated_at") or _t(p, "started_at")
+            if ps and cs and cs < ps:                       # ③ 时间包含
+                continue
+            if pe_ and ce_ and ce_ > pe_:
+                continue
+            cands.append((pn, j, p))
+        if not cands:
+            continue
+        cands.sort(key=lambda x: x[0])      # 最小满足者 = 最近的一层父
+        pn, j, p = cands[0]
+        out.append({"child": child["event_id"], "parent": p["event_id"],
+                    "parent_title": p.get("canonical_title"),
+                    "child_title": child.get("canonical_title"),
+                    "size_ratio": round(pn / max(1, cn), 2),
+                    "entity_jaccard": round(j, 3),
+                    "reason": "size+entity+time"})
+    return out

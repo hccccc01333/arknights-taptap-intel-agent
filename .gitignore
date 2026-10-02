@@ -128,3 +128,4 @@ data/event_bus/
 data/state/l2_processed.sqlite3
 data/state/l2_embeddings.sqlite3
 data/state/l3_trend.sqlite3
+l3_run_out.json
