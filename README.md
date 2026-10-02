@@ -37,6 +37,7 @@
 | **L2** | `L2_signal/` | **加工与语义标准化**：Canonical Model、清洗去重、实体链接、指标归一 | ❌ 默认不用 LLM |
 | 语义加工 | `L3_semantic/` | 语义理解：标注 v1.4、公告结构化（第二层的语义部分） | ✅ LLM 标注 |
 | **L3** | `L3_trend/` | ★ **趋势智能**（Data Science Core）：事件聚类、速度/加速度/爆发、Hot/Momentum/Confidence、生命周期、闭环调频 | ➖ 规则 + 统计 |
+| **L4** | `L4_intelligence/` | ★ **AI 情报与增长推理**（Agent Intelligence）：Evidence 事实层级、Trend Analyst、TapTap Relevance、Audience/Motivation、Opportunity、Growth Hypothesis、Creative、Evaluator+Risk、人工闸门（LangGraph 编排） | ➖ 规则兜底（无 key） |
 | **L5** | `L5_generation/` | 生成：素材库、创意、洞察 | ✅ |
 | **L6** | `L6_delivery/` | 交付：简报 / 日报周报 / 看板 / 渠道对照 | ➖ 渲染 |
 | 控制面 | `runtime/` | harness / 任务契约 / LangGraph 图 / 调度 | ➖ |
