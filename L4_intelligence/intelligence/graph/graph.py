@@ -22,6 +22,7 @@ from ..nodes import opportunity as N_opportunity
 from ..nodes import creative as N_creative
 from ..nodes import evaluation as N_evaluation
 from ..llm import ModelRouter, stamp
+from ..nodes import llm_augment as AUG
 from ..prompts import PROMPT_VERSIONS
 from ..state import assert_state_clean
 from .routing import (route_after_relevance, route_evidence_gate, route_quality,
@@ -70,7 +71,8 @@ def n_evidence(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
 def n_trend_analyst(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("trend_analyst")
     out = N_analysis.trend_analyst(state.get("evidence_pack") or {}, {})
-    out["mode"] = info["mode"]
+    out = AUG.augment_trend_analyst(out, state.get("evidence_pack") or {}, ctx.router)
+    out.setdefault("mode", info["mode"])
     stamp(state, "trend_analyst", info, PROMPT_VERSIONS["trend_analyst"])
     ctx.log("trend_analyst", ok=True, mode=info["mode"])
     return {"trend_analysis": out}
@@ -79,7 +81,8 @@ def n_trend_analyst(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
 def n_relevance(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("relevance")
     out = N_analysis.relevance(state.get("evidence_pack") or {}, state.get("trend_analysis"))
-    out["mode"] = info["mode"]
+    out = AUG.augment_relevance(out, state.get("evidence_pack") or {}, ctx.router)
+    out.setdefault("mode", info["mode"])
     stamp(state, "relevance", info, PROMPT_VERSIONS["relevance"])
     ctx.log("relevance", ok=True, score=out["score"], route=out["route"])
     return {"relevance": out, "route": out["route"]}
@@ -98,6 +101,7 @@ def n_research(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
 def n_audience(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("audience")
     out = N_analysis.audience(state.get("evidence_pack") or {}, state.get("trend_analysis") or {})
+    out = AUG.augment_audience(out, state.get("evidence_pack") or {}, ctx.router)
     stamp(state, "audience", info, PROMPT_VERSIONS["audience"])
     ctx.log("audience", ok=True, n=len(out))
     return {"audiences": out}
@@ -107,8 +111,9 @@ def n_opportunity(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("opportunity")
     cap = 2 if state.get("route") == "light_analysis" else ctx.max_opportunities
     out = N_opportunity.opportunity(state, max_opportunities=cap)
+    out = AUG.augment_opportunity(out, state, ctx.router)
     for o in out:
-        o["mode"] = info["mode"]
+        o.setdefault("mode", info["mode"])
     stamp(state, "opportunity", info, PROMPT_VERSIONS["opportunity"])
     ctx.log("opportunity", ok=True, n=len(out))
     return {"opportunities": out}
@@ -125,6 +130,7 @@ def n_strategist(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
 def n_creative(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("creative")
     out = N_creative.generate(state, max_per_opp=2 if state.get("route") == "light_analysis" else 3)
+    out = AUG.augment_creative(out, state, ctx.router)
     out = out[:ctx.max_creatives]
     stamp(state, "creative", info, PROMPT_VERSIONS["creative"])
     ctx.log("creative", ok=True, n=len(out))
@@ -134,7 +140,8 @@ def n_creative(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
 def n_evaluator(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("evaluator")
     creatives = state.get("creatives") or []
-    evals = [N_evaluation.evaluate(c, state, peers=creatives) for c in creatives]
+    rule_evals = [N_evaluation.evaluate(c, state, peers=creatives) for c in creatives]
+    evals = AUG.augment_evaluation(rule_evals, creatives, state, ctx.router)
     for c, e in zip(creatives, evals):
         c["score"] = e["creative_score"]
         c["evaluation"] = e
@@ -181,6 +188,7 @@ def n_revise(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
 def n_risk(state: Dict[str, Any], ctx: Ctx) -> Dict[str, Any]:
     info = ctx.router.resolve("risk")
     out = N_evaluation.risk(state)
+    out = AUG.augment_risk(out, state, ctx.router)
     stamp(state, "risk", info, PROMPT_VERSIONS["risk"])
     ctx.log("risk", ok=True, level=out["risk_level"])
     return {"risk": out}
@@ -313,6 +321,31 @@ def run(state: Dict[str, Any], ctx: Ctx, engine: str = "auto") -> Dict[str, Any]
             out["engine"] = "stdlib_fallback"
     out["graph_version"] = GRAPH_VERSION
     out["langgraph_installed"] = HAS_LANGGRAPH
+    # ★★ `llm_used` = **是否真的采纳了模型输出**，不是"是否尝试过调用"。
+    #    实测：额度熔断 → 0 次调用成功、全部回退规则，产物却标 llm_used=True。
+    #    项目纪律「AI 参与度 = 唯一进度指标」+「不许 overclaim」→ 这个字段不能自欺：
+    #    以 usage.calls 为准，并把各节点实际 mode 统计一并写进产物。
+    ok_calls = int((ctx.router.usage.as_dict() or {}).get("calls") or 0)
+    out["llm_enabled"] = bool(getattr(ctx.router, "enabled", False))
+    out["llm_used"] = ok_calls > 0
+    out["llm_calls_ok"] = ok_calls
+    modes = [str((out.get(k) or {}).get("mode") or "") for k in ("trend_analysis", "relevance", "risk")]
+    for k in ("audiences", "opportunities", "creatives"):
+        modes += [str(x.get("mode") or "") for x in (out.get(k) or [])]
+    modes += [str(x.get("mode") or "") for x in ((out.get("evaluation") or {}).get("items") or [])]
+    out["llm_adoption"] = {
+        "llm": sum(1 for m in modes if m == "llm"),
+        "rule": sum(1 for m in modes if m.startswith("rule")),
+        "total": len(modes),
+    }
+    if getattr(ctx.router, "quota_exhausted", False):
+        out["llm_quota_exhausted"] = True
+        out["llm_quota_reason"] = ctx.router.quota_reason[:200]
+    out["llm_usage"] = ctx.router.usage.as_dict()
+    if ctx.router.last_errors:
+        out["llm_errors"] = ctx.router.last_errors[:8]
+    if ctx.router.last_raw:
+        out["llm_raw_on_failure"] = {k: v[:600] for k, v in list(ctx.router.last_raw.items())[:3]}
     out["state_violations"] = assert_state_clean(
         {k: v for k, v in out.items() if k not in ("evidence_pack",)})
     return out

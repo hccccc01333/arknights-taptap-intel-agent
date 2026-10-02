@@ -64,7 +64,8 @@ def temporal_ok(up: Upstream, sample: int = 3000) -> bool:
 
 def run_event(up: Upstream, store: IntelligenceStore, event: Dict[str, Any],
               engine: str = "auto", use_cache: bool = True,
-              human_review: bool = True, temporal_ok_flag: bool = False) -> Dict[str, Any]:
+              human_review: bool = True, temporal_ok_flag: bool = False,
+              use_llm: bool = True) -> Dict[str, Any]:
     tier = tier_of(event, temporal_ok=temporal_ok_flag)
     if use_cache:
         cached = store.cached_analysis(event)
@@ -76,6 +77,9 @@ def run_event(up: Upstream, store: IntelligenceStore, event: Dict[str, Any],
                 return payload
     state = empty_state(event)
     ctx = Ctx(up, human_review=human_review)
+    if not use_llm:
+        from intelligence.llm import ModelRouter
+        ctx.router = ModelRouter(enabled=False)
     result = run(state, ctx, engine=engine)
     result["tier"] = tier
     result["trace"] = ctx.trace          # ★ 必须在保存前写，否则 payload 里没有轨迹
@@ -147,6 +151,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--human-review", dest="human_review", action="store_true", default=True)
     ap.add_argument("--no-human-review", dest="human_review", action="store_false")
     ap.add_argument("--package", action="store_true", help="输出 §52 Growth Intelligence Package")
+    ap.add_argument("--no-llm", dest="use_llm", action="store_false", default=True,
+                    help="禁用 LLM，全部走规则兜底")
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--feedback", nargs=3, metavar=("IDEA_ID", "DECISION", "REASON"))
     ap.add_argument("--history", help="查看某事件的历次分析（§44 不覆盖）")
@@ -192,7 +198,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 continue
             r = run_event(up, store, ev, engine=args.engine,
                           use_cache=not args.no_cache, human_review=args.human_review,
-                          temporal_ok_flag=tok)
+                          temporal_ok_flag=tok, use_llm=args.use_llm)
             results.append(r)
             n += 1
             if args.limit and n >= args.limit:
@@ -215,6 +221,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "risk_counts": _count(results, lambda r: (r.get("risk") or {}).get("risk_level")),
                 "creatives": sum(len(r.get("creatives") or []) for r in results),
                 "llm_used_any": any(r.get("llm_used") for r in results),
+                "llm_usage": (results[0].get("llm_usage") if results else None),
+                "llm_errors_seen": sum(len(r.get("llm_errors") or []) for r in results),
                 "items": [{"event_id": r.get("event_id"),
                            "title": (r.get("evidence_pack", {}).get("event") or {}).get("title"),
                            "relevance": (r.get("relevance") or {}).get("score"),

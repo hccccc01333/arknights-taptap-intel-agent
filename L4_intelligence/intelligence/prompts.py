@@ -56,10 +56,12 @@ RESEARCH = """证据不足时才运行。只允许 Read-Only 工具。
 {FACT_INFERENCE_CONTRACT}
 """
 
+# ★ 模板里**不带** FACT_INFERENCE_CONTRACT：本节点输出的是结构化机会列表，
+#   三分纪律（facts/inferences/unknowns）与 JSON 结构自相矛盾 —— 实测模型直接在输出里
+#   指出 "There's a contradiction" 然后拒绝产出 JSON。证据纪律改由 observed_signal 字段承载。
 OPPORTUNITY = """从 Trend × Audience × Motivation × TapTap Asset × Growth Goal 组合出机会。
 每个机会必须说清：增长到底从哪里来（growth_mechanism）。
 ★ 没有 growth_mechanism 的机会不进入创意阶段。
-{FACT_INFERENCE_CONTRACT}
 """
 
 STRATEGIST = """把 Opportunity 转成可被验证的 Growth Hypothesis：
@@ -98,3 +100,70 @@ PROMPTS: Dict[str, str] = {
 
 def render(node: str) -> str:
     return PROMPTS.get(node, "").replace("{FACT_INFERENCE_CONTRACT}", FACT_INFERENCE_CONTRACT)
+
+
+# ---------------------------------------------------------------- JSON 输出契约
+# ★ 实测踩坑（2026-10-02）：最初只写了"输出必须分为 facts/inferences/unknowns 三段"，
+#   没说"必须输出 JSON、字段叫什么" → 模型用散文回答，`_extract_json` 全部失败，
+#   5 次成功调用里 3 次解析不出结构，节点全部回退规则。**要求输出格式必须写成机器可校验的契约。**
+JSON_SPECS: Dict[str, str] = {
+    "trend_analyst": (
+        '{"what_happened": str, "why_now": str, "trigger": str|null, "narratives": [str], '
+        '"key_uncertainties": [str], "facts": [str], "inferences": [str], "unknowns": [str], '
+        '"lifecycle_interpretation": str, "confidence": 0-1}'),
+    "relevance": (
+        '{"dimensions": {"user_overlap": 0-1, "community_fit": 0-1, "platform_asset_fit": 0-1, '
+        '"growth_potential": 0-1, "timing_fit": 0-1}, "reasons": {"user_overlap": str, '
+        '"community_fit": str, "platform_asset_fit": str, "growth_potential": str, "timing_fit": str}}'),
+    "audience": (
+        '{"audiences": [{"segment": str, "motivation_id": str, "interest_strength": 0-1, '
+        '"evidence": str, "signals": [str]}]}  # motivation_id 必须来自给定的候选集'),
+    "opportunity": (
+        '{"opportunities": [{"name": str, "audience": str, "user_motivation": str, '
+        '"motivation_id": str, "growth_goal": str, "growth_mechanism": str, '
+        '"observed_signal": str, "platform_advantage": str, "expected_metrics": [str], '
+        '"motivation_strength": 0-1}]}  # growth_goal 必须来自给定的有限集合'),
+    "creative": (
+        '{"creatives": [{"idea_name": str, "creative_type": str, "insight": str, "concept": str, '
+        '"user_flow": [str], "distribution_channels": [str], "primary_metric": str, '
+        '"secondary_metrics": [str], "dependencies": [str], "risks": [str]}]}  '
+        '# creative_type 必须来自给定的有限集合'),
+    "evaluator": (
+        '{"evaluations": [{"idea_id": str, "dimensions": {"relevance": 0-1, "user_insight": 0-1, '
+        '"timing": 0-1, "growth": 0-1, "feasibility": 0-1, "novelty": 0-1, "distribution": 0-1}, '
+        '"weaknesses": [str], "recommended_revision": [str]}]}  # idea_id 必须与输入一致'),
+    "risk": (
+        '{"risks": [{"type": str, "level": "low|medium|high", "description": str, '
+        '"constraint": str}]}'),
+}
+
+JSON_ONLY = ("★ 只输出一个 JSON 对象，不要 Markdown 围栏、不要解释、不要前后缀文字。"
+             "任何评分字段必须是 0 到 1 之间的数字。")
+
+
+# 叙述型节点：输出本就是 facts/inferences/unknowns 三分，纪律适用
+NARRATIVE_NODES = frozenset({"trend_analyst", "relevance", "audience", "research"})
+
+# ★ 推理模型会把整段思考写进 content，把 max_tokens 烧光 → 没空间输出 JSON。
+#   实测：2600 tokens 全花在思考上 → 一个机会都没输出；1500 反而出了 1 条。
+NO_THINKING = "不要输出任何思考过程、分析过程或解释文字。直接给出 JSON 对象本身。"
+
+
+def system_for(node: str) -> str:
+    """系统提示 = 角色 prompt +（仅叙述节点）三分纪律 + JSON 契约。
+
+    ★ 实测踩坑（2026-10-02）：最初**对所有节点**都追加三分纪律，模型在输出里原话指出
+    「输出必须严格分为三段 facts/inferences/unknowns」与「输出结构 {"opportunities": [...]}」
+    **自相矛盾**，然后拒绝产出 JSON。**纪律只加在它适用的节点上**，否则等于给模型一个矛盾指令。
+    """
+    spec = JSON_SPECS.get(node)
+    head = render(node)
+    if not spec:
+        return head
+    parts = [head]
+    if node in NARRATIVE_NODES and FACT_INFERENCE_CONTRACT not in head:
+        parts.append(FACT_INFERENCE_CONTRACT)
+    parts.append(NO_THINKING)
+    parts.append(JSON_ONLY)
+    parts.append(f"输出结构：{spec}")
+    return "\n".join(parts)
