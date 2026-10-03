@@ -187,13 +187,17 @@ function learning() {
 }
 
 const views = {feed, workspace, creative, execution, learning};
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');
-  document.getElementById('app').innerHTML = '';
-  views[b.dataset.v]();
-});
-views.feed();
+// 统一渲染入口：视图函数返回 HTML（workspace 自行渲染并返回空），
+// 分发器负责写入 #app —— 避免"return 了却没人挂载"的静默空白。
+function show(name) {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  const btn = document.querySelector('nav button[data-v="' + name + '"]');
+  if (btn) btn.classList.add('active');
+  const html = views[name]();
+  if (html) document.getElementById('app').innerHTML = html;
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
+show('feed');
 </script>
 </body>
 </html>
