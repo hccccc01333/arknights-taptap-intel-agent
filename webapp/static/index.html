@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>增长情报台</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- 登录 -->
+<div id="login" class="login-wrap">
+  <form class="login-card" id="login-form">
+    <div class="brand"><span class="logo">◆</span> 增长情报台</div>
+    <p class="login-sub">明日方舟 · 社区增长助手</p>
+    <label>你的名字<input id="li-actor" placeholder="运营A / 评审B / 发布C / 管理D / 观察E"></label>
+    <label>密码<input id="li-pass" type="password" value="demo"></label>
+    <div class="login-err" id="li-err"></div>
+    <button class="btn-primary" type="submit">进入工作台</button>
+    <p class="login-tip">演示密码统一是 <b>demo</b>。不同角色能做的事不一样。</p>
+  </form>
+</div>
+
+<!-- 主体 -->
+<div id="app" class="app hidden">
+
+  <!-- 顶栏 -->
+  <header class="top">
+    <div class="brand"><span class="logo">◆</span> 增长情报台</div>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="today">今日情报</button>
+      <button class="tab" data-tab="trend">趋势分析</button>
+      <button class="tab" data-tab="exec">执行与实验</button>
+      <button class="tab" data-tab="memory">团队记忆</button>
+    </nav>
+    <div class="top-right">
+      <span class="live" id="live-dot" title="实时同步"></span>
+      <button class="icon" id="btn-set" title="设置">⚙</button>
+      <button class="who" id="btn-me"><span id="me-name">—</span><i id="me-role"></i></button>
+    </div>
+  </header>
+
+  <!-- 内容区 -->
+  <main class="main" id="main">
+    <!-- 今日情报 -->
+    <section class="page" id="page-today">
+      <div class="page-head">
+        <div>
+          <h1 id="today-title">今天先看这些</h1>
+          <p class="sub" id="today-sub">正在为你整理…</p>
+        </div>
+        <div class="stat-row" id="today-stats"></div>
+      </div>
+      <div id="today-list" class="cards"></div>
+    </section>
+
+    <!-- 趋势分析 -->
+    <section class="page hidden" id="page-trend">
+      <div class="page-head"><div><h1>趋势分析</h1>
+        <p class="sub">所有正在发生的话题，按值得跟进的程度排序</p></div></div>
+      <div class="two-col">
+        <div class="panel"><h3>热度分布</h3><div id="trend-bars" class="bars"></div></div>
+        <div class="panel"><h3>话题温度计</h3><div id="trend-thermo" class="thermo"></div></div>
+      </div>
+      <div class="panel"><h3>全部话题</h3><div id="trend-table" class="table-wrap"></div></div>
+    </section>
+
+    <!-- 执行与实验 -->
+    <section class="page hidden" id="page-exec">
+      <div class="page-head"><div><h1>执行与实验</h1>
+        <p class="sub">已经上线的活动，以及它们到底有没有效果</p></div>
+        <button class="btn-ghost" id="btn-refresh-exec">刷新</button></div>
+      <div class="two-col">
+        <div class="panel"><h3>进行中的活动</h3><div id="exec-plans" class="list"></div></div>
+        <div class="panel"><h3>效果实验</h3><div id="exec-exps" class="list"></div></div>
+      </div>
+      <div class="panel"><h3>转化漏斗</h3><div id="funnel" class="funnel"></div></div>
+    </section>
+
+    <!-- 团队记忆 -->
+    <section class="page hidden" id="page-memory">
+      <div class="page-head"><div><h1>团队记忆</h1>
+        <p class="sub">过去做过什么、什么有效、什么踩过坑</p></div>
+        <button class="btn-ghost" id="btn-refresh-mem">刷新</button></div>
+      <div class="mem-cards" id="mem-cards"></div>
+      <div class="panel"><h3>检索历史经验</h3>
+        <div class="search-row">
+          <input id="mem-q" placeholder="试试：联动、UGC、排行榜…">
+          <button class="btn-primary" id="mem-go">查一查</button>
+        </div>
+        <div id="mem-result" class="list"></div></div>
+    </section>
+  </main>
+
+  <!-- 事件详情抽屉 -->
+  <div id="drawer" class="drawer">
+    <div class="drawer-inner" id="drawer-inner"></div>
+  </div>
+
+  <!-- 设置面板 -->
+  <div id="setpanel" class="setpanel hidden">
+    <div class="set-card">
+      <h3>团队设置</h3>
+      <div class="set-row"><span>我的名字</span><b id="set-me">—</b></div>
+      <div class="set-row"><span>我的角色</span><b id="set-role">—</b></div>
+
+      <h3 class="mt">今天的团队资源</h3>
+      <p class="set-note">这些数字会影响系统推荐什么样的方案。<b>只有管理员能改</b>。</p>
+      <div class="set-grid">
+        <label>研发人数<input type="number" id="set-dev" min="0" max="9"></label>
+        <label>设计人数<input type="number" id="set-design" min="0" max="9"></label>
+        <label>运营人数<input type="number" id="set-ops" min="0" max="9"></label>
+        <label>预算档位<select id="set-budget">
+          <option value="low">省钱</option><option value="mid">正常</option>
+          <option value="high">充足</option></select></label>
+      </div>
+      <div class="set-derive" id="set-derive"></div>
+      <button class="btn-primary" id="set-save">保存</button>
+      <span class="set-saved" id="set-saved"></span>
+      <button class="btn-ghost block mt" id="btn-logout">退出登录</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+[
+  {
+    "actor": "运营A",
+    "role": "operator",
+    "sha256": "2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea",
+    "note": "演示账号：创建创意/素材/计划，不能审批上线"
+  },
+  {
+    "actor": "评审B",
+    "role": "reviewer",
+    "sha256": "2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea",
+    "note": "演示账号：审批/驳回/急停"
+  },
+  {
+    "actor": "发布C",
+    "role": "publisher",
+    "sha256": "2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea",
+    "note": "演示账号：launch/发布素材"
+  },
+  {
+    "actor": "管理D",
+    "role": "admin",
+    "sha256": "2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea",
+    "note": "演示账号：全部权限"
+  },
+  {
+    "actor": "观察E",
+    "role": "viewer",
+    "sha256": "2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea",
+    "note": "演示账号：只读"
+  }
+]
