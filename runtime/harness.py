@@ -54,17 +54,16 @@ TZ = timezone(timedelta(hours=8))
 DEFAULT_TIMEOUT = 600
 LOCK_STALE_SEC = 3600          # 锁文件超过该时长视为陈旧（兜底，正常靠 OS 释放）
 
-CRAWLER = ROOT / "L1_data_source/collectors/taptap" / "crawl_taptap_discovery.py"
-PLATFORM = LAB / "platform_insight.py"
-TRACKER = LAB / "topic_tracker.py"
-EVENTS = LAB / "events.py"
-FEATURES = LAB / "features.py"
-MATERIALS = LAB / "materials.py"          # ★ T5 素材获取（纯代码两类）
-MATERIALS_JSONL = ROOT / "data/raw/taptap" / "materials" / "materials.jsonl"
-THREADS_JSONL = ROOT / "data/raw/taptap" / "materials" / "threads.jsonl"
+# ---- 六层链入口（2026-10-03 重接线：旧探测链脚本随旧舆情平台存量一起移除）----
+L1_PIPELINE = ROOT / "L1_data_source" / "pipeline.py"
+L2_PIPELINE = ROOT / "L2_signal" / "processing" / "pipeline.py"
+L3_PIPELINE = ROOT / "L3_trend" / "trend_engine" / "pipeline.py"
+L4_PIPELINE = ROOT / "L4_intelligence" / "intelligence" / "pipeline.py"
+L5_PIPELINE = ROOT / "L5_memory" / "memory" / "pipeline.py"
+L6_PIPELINE = ROOT / "L6_execution" / "execution" / "pipeline.py"
 
-TRACKER_DB = STATE / "topic_tracker.sqlite3"
-EVENTS_DB = STATE / "events.sqlite3"
+L3_DB = ROOT / "data" / "state" / "l3_trend.sqlite3"
+L4_DB = ROOT / "data" / "state" / "l4_intelligence.sqlite3"
 
 REQUIRED_CHILD_DEPS = ("requests",)
 VENV_HINT = r"C:\Users\Hzz\.workbuddy\binaries\python\envs\default\Scripts\python.exe"
@@ -127,56 +126,50 @@ def TOOLS() -> dict[str, ToolSpec]:
       · db_delta              ：某表行数增量 ≥ N
     """
     return {
-        "crawl_hot_hashtags": ToolSpec(
-            name="crawl_hot_hashtags",
-            script=CRAWLER,
-            build_argv=lambda p: ["--source", "hot-hashtags", "--limit", str(p["limit"])],
-            params={"limit": {"type": "int", "required": False, "default": 10,
-                              "min": 1, "max": 30}},
+        # ---- L1：采集到期数据源（planner 按频率计划判断；含反爬预算内的一切网络行为）----
+        "l1_collect": ToolSpec(
+            name="l1_collect",
+            script=L1_PIPELINE,
+            build_argv=lambda p: ["--once"],
             net=True,
-            result={"artifact": ROOT / "data/raw/taptap" / "hot_hashtags.csv",
-                    "min_rows": 1},
+            timeout=900,
+            # 产出契约：L1 落 Raw Lake/事件总线（sqlite+jsonl），行数契约由下游 l3 判定
+            result={},
         ),
-        "platform_facts": ToolSpec(
-            name="platform_facts",
-            script=PLATFORM,
-            result={"must_exist": LAB / "outputs" / "platform_insight.json"},
-        ),
-        "topic_sample": ToolSpec(
-            name="topic_sample",
-            script=TRACKER,
-            build_argv=lambda p: ["--sample"],
-            result={"db_delta": {"path": TRACKER_DB, "table": "topic_series", "min_rows": 1}},
-        ),
-        "events_run": ToolSpec(
-            name="events_run",
-            script=EVENTS,
+        # ---- L2：事件加工与语义标准化（Canonical Model，不联网）----
+        "l2_process": ToolSpec(
+            name="l2_process",
+            script=L2_PIPELINE,
             build_argv=lambda p: ["--run"],
         ),
-        "features_run": ToolSpec(
-            name="features_run",
-            script=FEATURES,
+        # ---- L3：事件聚类 + 八信号 + 生命周期 ----
+        "l3_trend_run": ToolSpec(
+            name="l3_trend_run",
+            script=L3_PIPELINE,
             build_argv=lambda p: ["--run"],
+            result={"db_delta": {"path": L3_DB, "table": "trend_event", "min_rows": 1}},
         ),
-        # ---- T5 素材获取：纯代码那两类（梗/二创角度需 LLM，见 implemented=False）----
-        "material_extract_code": ToolSpec(
-            name="material_extract_code",
-            script=MATERIALS,
-            build_argv=lambda p: ["--run", "--per-topic", str(p["per_topic"]),
-                                  "--per-thread", str(p["per_thread"])],
-            params={"per_topic": {"type": "int", "required": False, "default": 5,
-                                  "min": 1, "max": 20},
-                    "per_thread": {"type": "int", "required": False, "default": 3,
-                                   "min": 1, "max": 10}},
-            net=False,
-            # 产出契约：**两个产物都要有行**（素材库 + Thread 库）
-            result={"artifacts": [{"artifact": MATERIALS_JSONL, "min_rows": 1},
-                                  {"artifact": THREADS_JSONL, "min_rows": 1}]},
+        # ---- L4：AI 情报推理（无 key 规则兜底；自带 input_hash 缓存）----
+        "l4_intel_run": ToolSpec(
+            name="l4_intel_run",
+            script=L4_PIPELINE,
+            build_argv=lambda p: ["--run", "--limit", str(p["limit"])],
+            params={"limit": {"type": "int", "required": False, "default": 5,
+                              "min": 1, "max": 50}},
+            result={"db_delta": {"path": L4_DB, "table": "intelligence_analysis",
+                                 "min_rows": 1}},
         ),
-        "llm_classify": ToolSpec(
-            name="llm_classify", script=Path("（未实现）"),
-            net=False, implemented=False, unavailable_class="llm",
-            note="梗（两轴语义分类）/ 二创角度（生成）需 LLM；当前无 key（402）→ 分层降级",
+        # ---- L5：记忆回填（幂等：重跑行数不变）----
+        "l5_memory_ingest": ToolSpec(
+            name="l5_memory_ingest",
+            script=L5_PIPELINE,
+            build_argv=lambda p: ["--ingest-l3", "--ingest-l4"],
+        ),
+        # ---- L6：告警分级 + 工作台刷新（0 告警是正确结果）----
+        "l6_ops_run": ToolSpec(
+            name="l6_ops_run",
+            script=L6_PIPELINE,
+            build_argv=lambda p: ["--alerts-sweep"],
         ),
     }
 
@@ -874,7 +867,10 @@ def _is_net_and_live(step: dict[str, Any]) -> bool:
 
 def _probe_success(contract: dict[str, Any],
                    steps: list[dict[str, Any]]) -> tuple[bool, list[str], list[str]]:
-    """按契约的 success 判据总判任务成败。返回 (ok, notes, degraded_notes)。"""
+    """按契约的 success 判据总判任务成败（**通用**：判据由契约驱动，不按 task_id 硬编码）。
+
+    返回 (ok, notes, degraded_notes)。
+    """
     notes: list[str] = []
     degraded: list[str] = []
     crit = contract["success"]
@@ -885,47 +881,15 @@ def _probe_success(contract: dict[str, Any],
         return False, [f"{len(failed)} 步失败：" +
                        "、".join(f"{s['tool']}({s['error_class']})" for s in failed)], []
 
-    tid = contract["task_id"]
-    if tid == "hotspot_track":
-        want_min = int(crit.get("min_series_rows", 1))
-        delta = 0
-        for s in steps:
-            for a in s.get("artifacts") or []:
-                if a.startswith("topic_series(+"):
-                    delta += int(a.split("+")[1].rstrip(")"))
-        if delta >= want_min:
-            notes.append(f"topic_series 新增 {delta} 行（判据 ≥{want_min}）")
+    arts = sorted({a for s in steps for a in (s.get("artifacts") or [])})
+    if arts:
+        notes.append("产物：" + "、".join(arts[:4]))
+    else:
+        if crit.get("empty_is_success"):
+            degraded.append("本轮无结构化产出增量 —— 按 empty_is_success 判为成功"
+                            "（数据源未更新 / 无达标事件是常态，不是错误）")
         else:
-            if crit.get("empty_is_success"):
-                degraded.append("本轮无新增采样/无迁移 —— 按 empty_is_success 判为成功")
-            else:
-                return False, ["无新增采样且契约不允许空成功"], []
-        n_events = _table_count(EVENTS_DB, "topic_event")
-        notes.append(f"事件表累计 {n_events} 条")
-
-    if tid == "material_extract":
-        # 判据：代码可做的两类必须都出（min_types_code_only）；LLM 两类缺失 → 显式降级
-        want = int(crit.get("min_types_code_only", 2))
-        types: dict[str, int] = {}
-        try:
-            for line in Path(MATERIALS_JSONL).read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    t = json.loads(line).get("type")
-                    types[t] = types.get(t, 0) + 1
-        except (OSError, json.JSONDecodeError):
-            pass
-        if types:
-            notes.append("素材类型：" + "、".join(f"{k} {v} 条" for k, v in sorted(types.items())))
-        code_types = [t for t in ("original_post", "hot_comment") if types.get(t)]
-        if len(code_types) < want:
-            return False, [f"代码可做的类型只出了 {len(code_types)} 类"
-                           f"（契约要求 ≥{want}）：{code_types}"], degraded
-        for t in ("meme", "remix_angle"):
-            if not types.get(t):
-                degraded.append(f"{t} 未生成（需 LLM，当前无 key）—— **分层降级**，"
-                                "已出代码可做的两类")
-        # LLM 缺口的**领域化说明**已给出 → 不再重复输出通用降级文案
-        degen = [s for s in degen if s.get("error_class") != "llm"]
+            return False, ["无产出且契约不允许空成功"], []
 
     if degen:
         degraded.extend(f"{s['tool']}：{s['note'][:80]}" for s in degen)

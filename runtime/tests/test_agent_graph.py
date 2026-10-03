@@ -113,13 +113,12 @@ class _GraphBase(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self._old = {k: getattr(hr, k) for k in
-                     ("TRACE_JSONL", "HARNESS_DB", "EVENTS_DB", "TOOLS")}
+                     ("TRACE_JSONL", "HARNESS_DB", "TOOLS")}
         hr.TRACE_JSONL = self.tmp / "trace.jsonl"
         hr.HARNESS_DB = self.tmp / "harness.sqlite3"
-        hr.EVENTS_DB = self.tmp / "events.sqlite3"
         self.calls: dict[str, int] = {}
         # 采集产物：可控行数 → 用来驱动质检闸门
-        self.artifact = self.tmp / "hot_hashtags.csv"
+        self.artifact = self.tmp / "stub_artifact.csv"
         self.set_rows(14)
         self.install_tools()
         self.con = hr.connect()          # 复用一条连接，tearDown 关闭（避免 ResourceWarning）
@@ -130,22 +129,20 @@ class _GraphBase(unittest.TestCase):
             setattr(hr, k, v)
 
     def set_rows(self, n: int):
-        self.artifact.write_text("hashtag_id,title\n" +
+        self.artifact.write_text("content_id,title\n" +
                                  "".join(f"{i},t{i}\n" for i in range(n)), encoding="utf-8")
 
     def install_tools(self):
-        """桩工具：都不发网络、不真执行；crawl 的 artifact 指向可控 CSV。"""
+        """桩工具：都不发网络、不真执行；首工具的 artifact 指向可控 CSV。"""
         def mk(name, **over):
             d = {"name": name, "script": Path("."), "net": False}
             d.update(over)
             return hr.ToolSpec(**d)
         hr.TOOLS = lambda: {
-            "crawl_hot_hashtags": mk("crawl_hot_hashtags",
-                                     result={"artifact": self.artifact, "min_rows": 1}),
-            "platform_facts": mk("platform_facts"),
-            "topic_sample": mk("topic_sample"),
-            "events_run": mk("events_run"),
-            "features_run": mk("features_run"),
+            "l1_collect": mk("l1_collect",
+                             result={"artifact": self.artifact, "min_rows": 1}),
+            "l2_process": mk("l2_process"),
+            "l3_trend_run": mk("l3_trend_run"),
         }
 
     def hook(self):
@@ -167,12 +164,11 @@ class _GraphBase(unittest.TestCase):
 class TestGraphStructure(_GraphBase):
     def test_nodes_and_conditional_edges(self):
         """★ 「有图」的可核对证据：节点**由契约工具链生成** + 条件边（含重试环）。"""
-        m = ag.mermaid(task_id="hotspot_track")
+        m = ag.mermaid(task_id="trend_intelligence")
         for node in ("tick", "qc", "gate", "finish", "mark_degraded"):
             self.assertIn(node, m, f"图里缺公共节点 {node}")
         # 工具节点由契约顺序生成
-        for tool in ("crawl_hot_hashtags", "platform_facts", "topic_sample",
-                     "events_run", "features_run"):
+        for tool in ("l1_collect", "l2_process", "l3_trend_run"):
             self.assertIn(tool, m, f"图里缺工具节点 {tool}")
         self.assertIn(" -. ", m, "应有条件边（虚线，带标签）")
         self.assertIn("retry", m, "应有一条「重试」条件边")
@@ -183,44 +179,40 @@ class TestGraphStructure(_GraphBase):
 
         这一条不做，图就只是「一个流程」而不是「一个框架」。
         """
-        m1 = ag.mermaid(task_id="hotspot_track")
-        m2 = ag.mermaid(task_id="material_extract")
-        self.assertIn("crawl_hot_hashtags", m1)
-        self.assertIn("material_extract_code", m2, "第二个任务的节点应出现在图里")
-        self.assertIn("llm_classify", m2)
-        self.assertNotIn("crawl_hot_hashtags", m2, "不同任务不该共用热点专属节点")
+        m1 = ag.mermaid(task_id="trend_intelligence")
+        m2 = ag.mermaid(task_id="memory_ingest")
+        self.assertIn("l1_collect", m1)
+        self.assertIn("l5_memory_ingest", m2, "第二个任务的节点应出现在图里")
+        self.assertNotIn("l1_collect", m2, "不同任务不该共用主链专属节点")
         # 骨架相同（tick/qc/gate/finish 都在），节点不同 → 这就是「框架」
         for skeleton in ("tick", "qc", "finish", "mark_degraded"):
             self.assertIn(skeleton, m1)
             self.assertIn(skeleton, m2)
 
     def test_normal_run_ok(self):
-        r = self.g(task_id="hotspot_track")
+        r = self.g(task_id="trend_intelligence")
         self.assertTrue(r["ok"], r)
         self.assertFalse(r["interrupted"])
-        self.assertEqual(r["n_steps"], 5, "5 个工具各跑一次")
+        self.assertEqual(r["n_steps"], 3, "3 个工具各跑一次")
         self.assertGreaterEqual(r["n_rows"], 0, "产物行数（质检判据）")
         self.assertEqual(r["qc_rounds"], 1)
 
     def test_qc_retry_loop_is_bounded(self):
         """★ 质检不过 → 重来 → 还不过 → 标降级继续（**有界环**）。"""
         self.set_rows(0)                       # 产物 0 行 → 质检不过
-        r = self.g(task_id="hotspot_track")
+        r = self.g(task_id="trend_intelligence")
         self.assertEqual(r["qc_rounds"], ag.MAX_QC_ROUNDS, "应重来到上限")
-        self.assertEqual(self.calls.get("crawl_hot_hashtags"), ag.MAX_QC_ROUNDS)
+        self.assertEqual(self.calls.get("l1_collect"), ag.MAX_QC_ROUNDS)
         self.assertTrue(any("降级" in d for d in r["degraded"]), r["degraded"])
         self.assertTrue(r["ok"], "降级不是失败：仍应继续走完")
 
     def test_qc_pass_no_retry(self):
-        r = self.g(task_id="hotspot_track")
-        self.assertEqual(self.calls.get("crawl_hot_hashtags"), 1, "质检过了不该重采")
+        r = self.g(task_id="trend_intelligence")
+        self.assertEqual(self.calls.get("l1_collect"), 1, "质检过了不该重采")
 
     def test_blank_task_refused(self):
-        """契约已立、实现空白 → 图不假装能跑。
-
-        （`material_extract` 2026-10-01 起已翻为 `partial`，所以用桩契约验这条路径。）
-        """
-        c = dict(tc.get("hotspot_track"))
+        """契约已立、实现空白 → 图不假装能跑。"""
+        c = dict(tc.get("trend_intelligence"))
         c.update({"task_id": "blank_task", "status": "blank"})
         with _patch_contracts(c):
             r = self.g(task_id="blank_task")
@@ -231,24 +223,24 @@ class TestGraphStructure(_GraphBase):
 class TestInterrupt(_GraphBase):
     def test_interrupt_then_resume_without_rerun(self):
         """★ 停在人工确认点；**恢复时不重跑已完成的节点**（checkpointer 的实质价值）。"""
-        r1 = self.g(task_id="hotspot_track", use_gate=True, thread="g1")
+        r1 = self.g(task_id="trend_intelligence", use_gate=True, thread="g1")
         self.assertTrue(r1["interrupted"], r1)
         self.assertEqual(r1["n_steps"], 1, "质检通过后即停在 gate 前（只跑了首工具）")
-        self.assertEqual(self.calls.get("crawl_hot_hashtags"), 1)
+        self.assertEqual(self.calls.get("l1_collect"), 1)
         self.assertIn("是否批准", r1["interrupt"]["ask"])
 
-        crawl_before = self.calls.get("crawl_hot_hashtags", 0)
-        r2 = self.g(task_id="hotspot_track", use_gate=True, thread="g1",
+        first_before = self.calls.get("l1_collect", 0)
+        r2 = self.g(task_id="trend_intelligence", use_gate=True, thread="g1",
                       resume=True)
         self.assertTrue(r2["ok"], r2)
         self.assertFalse(r2["interrupted"])
-        self.assertEqual(r2["n_steps"], 5, "恢复后补齐 act 的两个工具")
-        self.assertEqual(self.calls.get("crawl_hot_hashtags"), crawl_before,
-                         "★ 恢复时不该重跑 crawl（检查点已存）")
+        self.assertEqual(r2["n_steps"], 3, "恢复后补齐剩余工具")
+        self.assertEqual(self.calls.get("l1_collect"), first_before,
+                         "★ 恢复时不该重跑首工具（检查点已存）")
 
     def test_checkpoint_persisted_to_sqlite(self):
         """中断状态真的落到了 sqlite（跨进程可恢复的前提）。"""
-        self.g(task_id="hotspot_track", use_gate=True, thread="g2")
+        self.g(task_id="trend_intelligence", use_gate=True, thread="g2")
         db = self.tmp / "ck.sqlite3"
         self.assertTrue(db.exists(), "checkpoint 库应存在")
         con = sqlite3.connect(str(db))
@@ -257,14 +249,14 @@ class TestInterrupt(_GraphBase):
         self.assertGreater(n, 0, "应有检查点行")
 
     def test_gate_off_skips_interrupt(self):
-        r = self.g(task_id="hotspot_track", use_gate=False)
+        r = self.g(task_id="trend_intelligence", use_gate=False)
         self.assertFalse(r["interrupted"], "契约 human=False 时不该停")
-        self.assertEqual(r["n_steps"], 5)
+        self.assertEqual(r["n_steps"], 3)
 
 
 class TestTraces(_GraphBase):
     def test_graph_run_trace_written(self):
-        self.g(task_id="hotspot_track")
+        self.g(task_id="trend_intelligence")
         rows = [json.loads(l) for l in (self.tmp / "trace.jsonl")
                 .read_text(encoding="utf-8").splitlines() if l.strip()]
         kinds = [r["kind"] for r in rows]

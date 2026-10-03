@@ -157,16 +157,17 @@ class TestContracts(unittest.TestCase):
         c["depends_on"] = ["不存在的任务"]
         self.assertTrue(any("未注册任务" in p for p in tc.validate(c)))
 
-    def test_hotspot_track_empty_is_success(self):
-        """★「本轮没有热点」也算成功——这条写进契约也必须有测试看着。"""
-        c = tc.get("hotspot_track")
+    def test_trend_intelligence_empty_is_success(self):
+        """★「本轮没有新事件」也算成功——这条写进契约也必须有测试看着。"""
+        c = tc.get("trend_intelligence")
         self.assertTrue(c["success"]["empty_is_success"])
 
-    def test_material_extract_declares_pending(self):
-        c = tc.get("material_extract")
-        self.assertIn(c["status"], ("partial", "built"),
-                      "纯代码两类已实现（梗/二创角度仍需 LLM）")
-        self.assertIn("schedule", c["pending"])
+    def test_chain_dependencies_in_order(self):
+        """★ 注册表即六层主链：依赖关系必须构成 L3→L4→L5→L6 的有序链。"""
+        self.assertEqual(tc.get("trend_intelligence")["depends_on"], [])
+        self.assertEqual(tc.get("intelligence_run")["depends_on"], ["trend_intelligence"])
+        self.assertEqual(tc.get("memory_ingest")["depends_on"], ["intelligence_run"])
+        self.assertEqual(tc.get("ops_alerts")["depends_on"], ["memory_ingest"])
 
 
 class TestTextAccess(unittest.TestCase):
@@ -210,21 +211,17 @@ class TestTextAccess(unittest.TestCase):
         self.assertTrue(any("不许把原文回传" in p for p in tc.validate(c)))
 
     def test_real_contracts_declare_text_access(self):
-        for tid in ("hotspot_track", "material_extract"):
+        for tid in ("trend_intelligence", "intelligence_run"):
             ta = tc.get(tid)["text_access"]
             self.assertIn(ta["granularity"], tc.TEXT_GRANULARITIES)
             self.assertTrue(ta["sources"], f"{tid} 必须声明读哪些文本源")
             self.assertTrue(ta["returns"], f"{tid} 必须声明回传什么")
 
-    def test_hotspot_track_discloses_ferment_handoff(self):
-        """诚实记录交接点：探测链只读标题，语义判断（可发酵度）在**深采决策**处消费。
-
-        （我一度把它写成「缺口」——不准确：`scheduler.decide_drill` 确实读 ferment_judge.json。
-         发现高频便宜、判断低频贵，是刻意的成本设计。）
-        """
-        ta = tc.get("hotspot_track")["text_access"]
-        self.assertIn("ferment_judge", ta.get("ferment_handoff", ""))
-        self.assertIn("深采决策", ta.get("ferment_handoff", ""))
+    def test_trend_intelligence_discloses_semantic_handoff(self):
+        """诚实记录职责交接点：L3 只回答「什么在发生」，语义判断在第四层 Relevance。"""
+        ta = tc.get("trend_intelligence")["text_access"]
+        self.assertIn("第四层", ta.get("note", ""))
+        self.assertIn("Relevance", ta.get("note", ""))
 
 
 # ============================================================ 参数校验
@@ -471,7 +468,7 @@ class TestGuardAndTrace(_PatchPaths):
     def test_blank_task_refused(self):
         """★ 契约已立、实现空白 → 明确拒绝（harness 不假装能跑）。
 
-        （`material_extract` 2026-10-01 起已从 blank 翻为 partial，所以这里用桩契约验拒绝路径。）
+        （用桩契约验拒绝路径。）
         """
         self.install_tools(a=self.local_tool("a"))
         hr.tc = _FakeTC(fake_contract(task_id="blank_task", tools=["a"], status="blank"))
@@ -495,7 +492,7 @@ class TestGuardAndTrace(_PatchPaths):
         holder = hr.TaskLock()
         self.assertTrue(holder.acquire())
         try:
-            r = hr.run_task("hotspot_track", now=NOW, trace_path=self.tmp / "trace.jsonl")
+            r = hr.run_task("trend_intelligence", now=NOW, trace_path=self.tmp / "trace.jsonl")
             self.assertTrue(r.get("skipped"), "有锁在持 → 本轮跳过（防 tick 重叠）")
         finally:
             holder.release()
@@ -516,14 +513,14 @@ class TestGuardAndTrace(_PatchPaths):
         for k in ("tool", "outcome", "attempt", "elapsed"):
             self.assertIn(k, step, "轨迹必须含 attempt/耗时/成败（可回放的前提）")
 
-    def test_empty_run_still_success_for_hotspot(self):
-        """empty_is_success 生效：无采样增量也判成功，但要有降级说明。"""
-        self.install_tools(platform_facts=self.local_tool("platform_facts"),
-                           topic_sample=self.local_tool("topic_sample"))
-        c = dict(tc.get("hotspot_track"))
-        c["tools"] = ["platform_facts", "topic_sample"]   # 只装这两个（其余未注册）
+    def test_empty_run_still_success_for_trend(self):
+        """empty_is_success 生效：无产出增量也判成功，但要有降级说明。"""
+        self.install_tools(l1_collect=self.local_tool("l1_collect"),
+                           l2_process=self.local_tool("l2_process"))
+        c = dict(tc.get("trend_intelligence"))
+        c["tools"] = ["l1_collect", "l2_process"]   # 只装这两个（stub 全通过、无产物）
         hr.tc = _FakeTC(c)
-        r = hr.run_task("hotspot_track", now=NOW, use_lock=False,
+        r = hr.run_task("trend_intelligence", now=NOW, use_lock=False,
                         trace_path=self.tmp / "trace.jsonl", call_hook=self.hook())
         self.assertTrue(r["ok"], r)
         self.assertTrue(any("empty_is_success" in d for d in r["degraded"]), r["degraded"])

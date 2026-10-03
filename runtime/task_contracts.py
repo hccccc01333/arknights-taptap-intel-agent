@@ -8,6 +8,11 @@
 ★ 本文件是**纯数据**，不含任何执行逻辑（执行逻辑在 `harness.py`）。
   这样契约可以被单独评审、单独测试、被前端/文档直接读取。
 
+★ 2026-10-03 重接线：注册表从旧「探测链（热榜→采样→触发→特征）」整体换到
+  六层 Growth Intelligence OS 的主链 —— trend_intelligence → intelligence_run
+  → memory_ingest → ops_alerts，依赖顺序即数据流。旧任务（hotspot_track /
+  material_extract）随旧舆情平台存量一起移除（git 历史可回溯）。
+
 四条纪律（写契约时必守，validate() 会检查可检查的部分）
   1. `success` 必须**可代码判定** —— 空 dict 直接判非法
   2. `on_fail` 必须**按错误类型分派**，不许只有一种动作
@@ -46,10 +51,7 @@ BUDGET_KEYS: tuple[str, ...] = ("max_tool_calls", "max_net_calls",
 # ---- text_access：文本读取声明 ------------------------------------------------
 # ★ 为什么必须有这个字段（2026-10-01 用户追问「这四个还是要原文的，不然就是盲目的」）：
 #   披露"原文不进 State"很容易被误读成"系统不读文本" —— 那会做出**盲目**的系统。
-#   事实：四个任务都要读文本，区别只在**读多少**（粒度）与**谁读**（代码/LLM）。
 #   所以要求每个任务显式声明：读哪些源、什么粒度、是否送 LLM、**读完只回传什么**。
-#   这三条把两件事同时管住：① 不读会盲目（禁止 granularity=none 却声称能判断语义）
-#   ② 读了会失控（禁止把原文回传进 State/轨迹，必须回传结论 + source id）
 TEXT_GRANULARITIES: tuple[str, ...] = ("none", "short", "full")
 # 回传值里不许出现的"原文"字段名（与 agent_graph 的 State 守卫同一张黑名单）
 RAW_TEXT_MARKS: tuple[str, ...] = ("raw_text", "content", "body", "review_text",
@@ -61,71 +63,53 @@ LLM_TOOLS: tuple[str, ...] = ("llm_classify",)
 # ---------------------------------------------------------------- 契约
 
 TASKS: dict[str, dict[str, Any]] = {
-    # ------------------------------------------------------------ T2
-    "hotspot_track": {
-        "task_id": "hotspot_track",
-        "name": "热点追踪识别",
-        "goal": ("从 TapTap 平台热榜与话题帖子流中识别值得关注的社区热点，"
-                 "持续追踪其生命周期（冒头→升温→爆发→退潮→沉寂），"
-                 "并在状态迁移时产生事件。"),
+    # ------------------------------------------------------------ L1→L3 主链
+    "trend_intelligence": {
+        "task_id": "trend_intelligence",
+        "name": "趋势情报（采集→加工→聚类评分）",
+        "goal": ("跑一轮六层链的 L1→L3：采集到期数据源 → 事件加工与语义标准化 → "
+                 "事件聚类与八信号/三套评分/生命周期。产出第三层 Event，供第四层推理。"),
         "inputs": [
-            "data/raw/taptap/hot_hashtags.csv",
-            "data/raw/taptap/discovery_posts.csv",
-            "data/outputs/agent/platform_insight.json",
+            "L1 source registry（enabled 数据源，按 plan 到期判断）",
+            "data/events/*.jsonl（L1 事件总线输出）",
         ],
-        "tools": [                       # 顺序即执行顺序（本任务是一条链）
-            "crawl_hot_hashtags",
-            "platform_facts",
-            "topic_sample",
-            "events_run",
-            "features_run",
-        ],
+        "tools": ["l1_collect", "l2_process", "l3_trend_run"],
         "outputs": [
-            "data/state/topic_tracker.sqlite3::topic_state",
-            "data/state/topic_tracker.sqlite3::topic_series",
-            "data/state/events.sqlite3::topic_event",
-            "data/state/post_snapshots.sqlite3::post_snapshots",
-            "data/raw/taptap/features/features.jsonl",
+            "data/state/l2_processed.sqlite3::content",
+            "data/state/l3_trend.sqlite3::trend_event",
         ],
         "artifact_contract": {
-            "audience": "运营侧（看板 / 前端）",
-            "format": "json",
-            "fields": ["title", "state", "peak_metric", "first_seen_at", "last_transition"],
-            "granularity": "每话题一行；状态迁移另出事件流",
-            "note": "前端话题列表直读这里，不需要额外推送层",
+            "audience": "第四层 Intelligence（机器可读）；运营经 L6 Feed 消费",
+            "format": "sqlite（结构化事件）",
+            "fields": ["event_id", "canonical_title", "lifecycle", "hot_score",
+                       "momentum_score", "confidence_score", "content_count"],
+            "granularity": "每事件一行；分数历史/生命周期另表",
+            "note": "第四层 upstream 直读此库；不再是给前端的话题 JSON",
         },
-        # ★ 文本读取声明：不读文本就没有判断，读法必须写清楚
+        # ★ 文本读取声明：L3 聚类与信号计算在层内读文本，只落结构化分数与 id
         "text_access": {
-            "sources": ["hot_hashtags.title", "discovery_posts.title"],
-            "granularity": "short",
+            "sources": ["l1.events.normalized_text（L3 层内读，不进 State/轨迹）"],
+            "granularity": "full",
             "via_llm": False,
-            "returns": ["topic_key", "title", "state", "peak_metric", "series_delta"],
-            "note": ("本链只读**标题**（短标识，~13 字）——追踪判的是变化率；"
-                     "「这热点值不值得做」需要读语义，那一步在 `ferment_judge`"
-                     "（读 title 送 LLM，旧判据字面匹配 0/10 → 语义 5/10）"),
-            # ★ 语义判断的交接点（不是缺口！）：探测链不读语义，判断由**深采决策**消费
-            "ferment_handoff": ("语义判断由**深采决策**消费：`scheduler.decide_drill` 读 "
-                                "`outputs/ferment_judge.json` 的 ferment_score/verdict，"
-                                "决定挖哪些话题（日志里「冒头但可发酵度 act（60）」就是它）。"
-                                "**发现高频便宜、判断低频贵 —— 刻意如此，不是没接上**"),
+            "returns": ["event_id", "n_members", "similarity", "scores"],
+            "note": ("「这热点值不值得做」的语义判断在第四层 Relevance（§14），"
+                     "本任务只回答「什么事件正在发生、多热、什么阶段」"),
         },
-        # ★ 全部可代码判定
         "success": {
-            "min_series_rows": 1,        # topic_series 本轮新增 ≥1 行
-            "min_sample_count": 2,       # 至少一个话题 sample_count ≥2 才能判迁移
-            "event_idempotent": True,    # 同 event_id 不重复入库
-            "empty_is_success": True,    # ★「本轮没有热点/没有迁移」也算成功
+            "min_event_rows": 1,          # trend_event 本轮新增 ≥1 行
+            "empty_is_success": True,     # ★ 本轮没有新事件也算成功（数据源未更新是常态）
         },
         "degrade": {
-            "hot_board_fail": "skip_round_mark_stale",
-            "no_topic_hit": "output_zero_topics_not_error",
+            "source_fail": "skip_and_continue",       # 单源失败不杀整轮（L1 DLQ 兜底）
+            "no_new_event": "output_zero_not_error",
         },
         "schedule": {"mode": "interval", "minutes": 15,
-                     "drill": "event_triggered", "drill_cooldown_min": 60},
+                     "note": "15min 承自探测层推导（实测特征时间 24min÷2=12min 下界，留余量）；"
+                             "**反爬上界未实测**，跑几天看 --status 再校准"},
         # ★ max_net_calls 才是真正要控的（反爬）；max_tool_calls 防跑飞
-        "budget": {"max_tool_calls": 8, "max_net_calls": 2,
-                   "timeout": 600, "max_retries": 2, "token": 0},
-        "idempotency_key": "hash(topic_key+to_state+occurred_at)",
+        "budget": {"max_tool_calls": 8, "max_net_calls": 4,
+                   "timeout": 900, "max_retries": 2, "token": 0},
+        "idempotency_key": "hash(source+cursor+window)",
         "on_fail": {"network": "retry", "empty": "degrade",
                     "schema": "reject", "waf": "abort"},
         "human": False,
@@ -134,60 +118,142 @@ TASKS: dict[str, dict[str, Any]] = {
         "pending": [],
     },
 
-    # ------------------------------------------------------------ T5
-    "material_extract": {
-        "task_id": "material_extract",
-        "name": "素材获取",
-        "goal": ("从已采集的帖子与评论中抽取 4 类素材（原帖引用 / 热评金句 / 梗 / 二创角度），"
-                 "每条素材带可验证的溯源；够不上溯源门槛的一律丢弃。"),
-        "inputs": [
-            "data/raw/taptap/discovery_posts.csv",
-            "data/raw/taptap/discovery_comments.csv",
-            "← 上游 T2 产出的 topic_key / topic_title",
-            "← Thread 结构（moment_id + 评论束）",
-        ],
-        "tools": ["material_extract_code", "llm_classify"],
-        "outputs": [
-            "data/raw/taptap/materials/materials.jsonl",
-            "data/raw/taptap/materials/threads.jsonl",
-        ],
+    # ------------------------------------------------------------ L4
+    "intelligence_run": {
+        "task_id": "intelligence_run",
+        "name": "AI 情报推理（Evidence→Relevance→Opportunity→Creative→Risk）",
+        "goal": ("对第三层达标事件跑第四层推理图（Event Gate 分级 → 证据 → 机会 → 创意 → "
+                 "评审 → 风险），产出可验证的情报包；无 LLM key 时规则兜底，产物如实标 mode。"),
+        "inputs": ["data/state/l3_trend.sqlite3::trend_event（达标事件，T0 跳过）"],
+        "tools": ["l4_intel_run"],
+        "outputs": ["data/state/l4_intelligence.sqlite3::intelligence_analysis"],
         "artifact_contract": {
-            "audience": "运营侧（前端「素材页」）",
-            "format": "json（素材卡片）",
-            "fields": ["material_id", "type", "text", "topic_key", "thread_id",
-                       "provenance.moment_id", "provenance.url", "metrics"],
-            "granularity": "一条素材一卡；四类可筛选",
-            "note": "前端素材页直读这里",
+            "audience": "第六层 Execution（Feed/工作流/人工闸门）",
+            "format": "sqlite + JSON payload",
+            "fields": ["analysis_id", "event_id", "relevance_score", "n_opportunities",
+                       "n_creatives", "risk_level"],
+            "granularity": "每事件每次分析一行（§44 版本化，不覆盖）",
         },
         "text_access": {
-            "sources": ["discovery_posts.summary", "discovery_comments.content（Thread 束）"],
+            "sources": ["l2.processed_content（节点内按 content_id 临时取原文）"],
             "granularity": "full",
             "via_llm": True,
-            "returns": ["material_id", "type", "topic_key", "count"],
-            "note": ("原文经 Thread 检索后作为**那一次调用的 prompt**，用完即弃；"
-                     "产物（素材卡片含 text）落 materials.jsonl；State 只留 id 与计数"),
-            "source_id_required": True,     # 用完即弃 → 结论必须带 id，否则不可回放
+            "returns": ["analysis_id", "relevance", "opportunity_ids", "mode"],
+            "note": "原文不进 State（State 守卫强制），读完只留结论 + source id",
         },
         "success": {
-            "traceable_rate": 1.0,       # ★ 溯源 100%：assert_traceable 全通过
-            "drop_on_untraceable": True,  # 不通过的丢弃并计数（不是打回）
-            "min_types_code_only": 2,    # LLM 不可用时仍须出 2 类（原帖引用 + 金句选取）
-            "pii_not_persisted": True,   # 作者名可展示，绝不入库
+            "min_analysis_rows": 1,
+            "empty_is_success": True,     # 没有达标事件（全部 T0 跳过）也算成功
         },
         "degrade": {
-            # ★ 分层降级：这是本任务最容易做错的地方
-            "llm_unavailable": "emit_code_only_types_and_label_missing",
-            "label_missing": ["meme", "remix_angle"],
+            "llm_unavailable": "rule_fallback_and_label_mode",
+            "no_eligible_event": "output_zero_not_error",
         },
-        "schedule": {"mode": None, "note": PENDING},          # ⬜ 待拍板
-        "budget": {"max_tool_calls": 20, "max_net_calls": 0,
-                   "timeout": 300, "max_retries": 2, "token": PENDING},
-        "idempotency_key": "hash(moment_id+comment_id+type)",
-        "on_fail": {"llm": "degrade", "schema": "reject", "empty": "degrade"},
-        "human": PENDING,                # ⬜ 金句分类仲裁是否要人工点
-        "depends_on": ["hotspot_track"],
-        "status": "partial",          # ★ 2026-10-01：纯代码两类已实现（梗/二创角度仍需 LLM）
-        "pending": ["schedule", "budget.token", "human"],
+        "schedule": {"mode": "interval", "minutes": 60,
+                     "note": "频率未校准；L4 自带 input_hash 缓存，重跑安全"},
+        "budget": {"max_tool_calls": 4, "max_net_calls": 0,
+                   "timeout": 1800, "max_retries": 1, "token": 50},
+        "idempotency_key": "hash(event_id+input_hash)（L4 自管缓存）",
+        "on_fail": {"network": "retry", "empty": "degrade",
+                    "schema": "reject", "waf": "abort", "llm": "degrade"},
+        "human": False,
+        "depends_on": ["trend_intelligence"],
+        "status": "built",
+        "pending": [],
+    },
+
+    # ------------------------------------------------------------ L5
+    "memory_ingest": {
+        "task_id": "memory_ingest",
+        "name": "记忆回填（趋势/创意/决策 → 第五层）",
+        "goal": ("把 L3 事件与 L4 分析/人工反馈回填第五层记忆：闭合事件入 Trend Memory，"
+                 "进行中热点入短期记忆（§18），创意入 Creative Memory（agent_generated），"
+                 "人工反馈入 Decision Memory。全幂等，重跑安全。"),
+        "inputs": [
+            "data/state/l3_trend.sqlite3",
+            "data/state/l4_intelligence.sqlite3",
+        ],
+        "tools": ["l5_memory_ingest"],
+        "outputs": ["data/state/l5_memory.sqlite3（6 类 Memory 表）"],
+        "artifact_contract": {
+            "audience": "第四层检索（Retrieval Service，§24 统一入口）",
+            "format": "sqlite",
+            "fields": ["trend_id", "creative_id", "decision_id", "tier", "authority"],
+            "granularity": "每条记忆一行；tier/authority 标信任级别（§39/§53）",
+        },
+        "text_access": {
+            "sources": [],
+            "granularity": "none",
+            "via_llm": False,
+            "returns": ["ingested", "short_term"],
+            "note": "只读写结构化记录，不读原文（PII 扫描在写入侧强制，§55）",
+        },
+        "success": {
+            "idempotent_rerun": True,     # 重跑行数不变 = 成功（幂等是特性不是失败）
+            "empty_is_success": True,
+        },
+        "degrade": {
+            "upstream_db_missing": "skip_with_reason",
+        },
+        "schedule": {"mode": "interval", "minutes": 60,
+                     "note": "跟随 intelligence_run 之后即可；频率未校准"},
+        "budget": {"max_tool_calls": 2, "max_net_calls": 0,
+                   "timeout": 300, "max_retries": 1, "token": 0},
+        "idempotency_key": "hash(源库内容+ingest 版本)（层内确定性主键）",
+        "on_fail": {"network": "retry", "empty": "degrade",
+                    "schema": "reject", "waf": "abort"},
+        "human": False,
+        "depends_on": ["intelligence_run"],
+        "status": "built",
+        "pending": [],
+    },
+
+    # ------------------------------------------------------------ L6
+    "ops_alerts": {
+        "task_id": "ops_alerts",
+        "name": "运营执行面（告警分级 + 工作台刷新）",
+        "goal": ("对 Feed 全量卡片跑 P0/P1/P2 分级告警（同事件同级别同日去重）并刷新"
+                 "离线工作台，让运营 30 秒知道今天先干什么（§36）。"),
+        "inputs": [
+            "L3 事件 + L4 分析（经 L6 Feed 组装）",
+            "data/state/ops_context.json（运营约束，可选，§39）",
+        ],
+        "tools": ["l6_ops_run"],
+        "outputs": [
+            "data/state/l6_execution.sqlite3::alert",
+            "L6_execution/workbench/index.html（生成物，不入 git）",
+        ],
+        "artifact_contract": {
+            "audience": "运营侧（工作台/通知）",
+            "format": "sqlite（告警）+ 单文件 HTML（只读镜像）",
+            "fields": ["alert_id", "tier", "title", "recommended_action", "basis"],
+            "granularity": "每事件同级别同日一条告警；工作台为全量快照",
+        },
+        "text_access": {
+            "sources": [],
+            "granularity": "none",
+            "via_llm": False,
+            "returns": ["n_alerts", "tiers"],
+            "note": "分级用结构化分数与窗口（§16 规格阈值/降级口径如实标 basis），不读原文",
+        },
+        "success": {
+            "min_alert_rows": 0,
+            "empty_is_success": True,     # ★ 没有达 P0/P1 门槛的事件 → 0 告警是正确结果
+        },
+        "degrade": {
+            "upstream_missing": "skip_with_reason",
+        },
+        "schedule": {"mode": "interval", "minutes": 60,
+                     "note": "跟随 intelligence_run；频率未校准"},
+        "budget": {"max_tool_calls": 2, "max_net_calls": 0,
+                   "timeout": 300, "max_retries": 1, "token": 0},
+        "idempotency_key": "hash(event+tier+date)（层内已去重）",
+        "on_fail": {"network": "retry", "empty": "degrade",
+                    "schema": "reject", "waf": "abort"},
+        "human": False,
+        "depends_on": ["memory_ingest"],
+        "status": "built",
+        "pending": [],
     },
 }
 

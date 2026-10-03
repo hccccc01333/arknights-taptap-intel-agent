@@ -61,7 +61,7 @@ TZ = timezone(timedelta(hours=8))
 
 MAX_QC_ROUNDS = 2             # 质检重来上限（= 首跑 + 重来 1 次，对应设计「失败自动重爬 1 次」）
 # ★ 质检判据不再写死行数，而是**复用首工具的产出契约**（harness.judge_result）——
-#   这样换任务不用改图：热点追踪看 hot_hashtags.csv，素材获取看 materials.jsonl。
+#   这样换任务不用改图：趋势情报看 trend_event 增量，记忆回填看幂等重跑。
 DEFAULT_THREAD = "inspect"
 
 # State 守卫：三条红线（与 tests/test_langgraph_design.py 同源）
@@ -325,7 +325,7 @@ def compile_graph(ctx: Ctx, *, db_path: Path | str | None = None):
 
 # ================================================================ 运行
 
-def run_graph(*, task_id: str = "hotspot_track", dry_run: bool = False,
+def run_graph(*, task_id: str = "trend_intelligence", dry_run: bool = False,
               force: bool = False, use_gate: bool = False,
               thread: str = DEFAULT_THREAD,
               params: dict[str, dict[str, Any]] | None = None,
@@ -393,7 +393,7 @@ def run_graph(*, task_id: str = "hotspot_track", dry_run: bool = False,
             own_con.close()
 
 
-def mermaid(*, task_id: str = "hotspot_track", use_gate: bool = False) -> str:
+def mermaid(*, task_id: str = "trend_intelligence", use_gate: bool = False) -> str:
     """导出图结构（mermaid）—— 「有图」这件事的可核对证据。"""
     contract = tc.get(task_id)
     ctx = Ctx(task_id=task_id, contract=contract, con=harness.connect(), use_gate=use_gate)
@@ -435,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     harness.suppress_console()            # ★ 自有控制台就自己隐藏
     harness.ensure_std_streams()          # ★ pythonw 无控制台时把 print 转日志
     ap = argparse.ArgumentParser(description="Agent 巡检图（LangGraph）")
-    ap.add_argument("--task", default="hotspot_track", help="跑哪个任务的图")
+    ap.add_argument("--task", default="trend_intelligence", help="跑哪个任务的图")
     ap.add_argument("--run", action="store_true", help="跑一次图")
     ap.add_argument("--resume", action="store_true", help="恢复被 interrupt 停住的那次")
     ap.add_argument("--graph", action="store_true", help="打印图结构（mermaid）")
