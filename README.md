@@ -38,7 +38,8 @@
 | 语义加工 | `L3_semantic/` | 语义理解：标注 v1.4、公告结构化（第二层的语义部分） | ✅ LLM 标注 |
 | **L3** | `L3_trend/` | ★ **趋势智能**（Data Science Core）：事件聚类、速度/加速度/爆发、Hot/Momentum/Confidence、生命周期、闭环调频 | ➖ 规则 + 统计 |
 | **L4** | `L4_intelligence/` | ★ **AI 情报与增长推理**（Agent Intelligence）：Evidence 事实层级、Trend Analyst、TapTap Relevance、Audience/Motivation、Opportunity、Growth Hypothesis、Creative、Evaluator+Risk、人工闸门（LangGraph 编排） | ➖ 规则兜底（无 key） |
-| **L5** | `L5_generation/` | 生成：素材库、创意、洞察 | ✅ |
+| **L5 记忆** | `L5_memory/` | ★ **知识与增长记忆**：6 类 Memory（业务/实体/趋势/创意/实验/决策）、混合检索、Growth Case 蒸馏、Anti-pattern、Playbook（人工审批）、写入策略与 PII 治理 | ➖ 治理管道，LLM 可选 |
+| **L5 生成** | `L5_generation/` | 生成：素材库、创意、洞察 | ✅ |
 | **L6** | `L6_delivery/` | 交付：简报 / 日报周报 / 看板 / 渠道对照 | ➖ 渲染 |
 | 控制面 | `runtime/` | harness / 任务契约 / LangGraph 图 / 调度 | ➖ |
 | 数据 | `data/` | raw / events / annotations / facts / state / outputs | — |
@@ -157,6 +158,14 @@ python L5_generation/cross_game_compare.py \
   --clean "明日方舟=data/processed/reviews/reviews_clean.csv" \
   --clean "鸣潮=data/raw/taptap_wuthering_waves/processed/reviews_clean.csv"
 
+# 第五层：知识与增长记忆（回填现有数据 → 混合检索 → Case 蒸馏）
+python L5_memory/memory/pipeline.py --seed                 # games 档案 + L4 TapTap 知识
+python L5_memory/memory/pipeline.py --ingest-l3 --ingest-l4
+python L5_memory/memory/pipeline.py --retrieve "明日方舟 联动 UGC" --top-k 5
+python L5_memory/memory/pipeline.py --context opportunity_agent --query "角色捏脸"
+python L5_memory/memory/pipeline.py --distill --event evt_xxx --force
+python L5_memory/memory/pipeline.py --stats
+
 # 单元测试（纯标准库，158 个用例；装 langgraph 则框架层测试一并执行，未装则整组跳过）
 python -m unittest discover -s L3_trend/tests -p "test_*.py"
 ```
@@ -176,6 +185,8 @@ L2_signal/cross_channel/      facts 锁数 + 综合简报
 L2_signal/lab/    异动 / 评估 / 事件
 L3_trend/     每日情报 Agent（风险分层 + 决策路由 + 话题追踪 + 简报）
                    └ state/  话题状态库（运行时，不入 git）
+L5_memory/        知识与增长记忆（6 类 Memory + 混合检索 + Case 蒸馏 + 治理）
+                   └ data/state/l5_memory.sqlite3（运行时库）
 games/           游戏档案（参数化入口：换档案即换游戏）
 skills/          Agent Skills（唯一 Skill 源目录）
 docs/            方法论与构建说明
@@ -236,6 +247,11 @@ python scripts/sync_agent_skills.py
 - [x] **巡检图（LangGraph，契约驱动）**（`agent_graph.py`：**节点由契约的工具链生成，同一张图跑任何任务** + 有界重试环 + `State` 守卫 + SQLite checkpointer
       跨进程恢复 + `interrupt` 人工确认点；**调度器探测链已收成 1 步 = 跑图**，时钟驱动任务而非脚本）
       频率已推导（实测特征时间 24min ÷ 2 = 12min 下界）；两级分离 + 用可发酵度避开冷启动悖论
+- [x] **知识与增长记忆层（L5_memory）**（6 类 Memory + 混合检索 + Case 蒸馏 + Anti-pattern +
+      Playbook 人工闸门；写入策略/PII/RBAC/时效治理；L4 的 `retrieval.py`「待建」项已接通：
+      search_experiments / get_game_profile / search_similar_cases 走真记忆）
+      设计见 `docs/知识增长记忆层设计.md`；实测：L3 事件无一生命周期闭合 → 长期 Trend 0 条（如实），
+      进行中 211 条进短期记忆
 - [ ] **Agent 框架落地**（LangGraph 4 图 / 32 节点 / 7 条件边 / 2 环 / 3 中断点，按 P1→P2→P3 分期）
       设计见 `docs/Agent框架落地设计.md`；框架层回归测试已就位（9 用例）
 - [ ] **交付层（当前最大的洞）**：产出是本地 `reports/*.md`，无推送 / 看板 / 权限 ——
@@ -247,6 +263,12 @@ python scripts/sync_agent_skills.py
       前两类判据清楚、不依赖 LLM，可先落地
 - [ ] 增长创意生成（热点 → 面向社区的实际增长创意）
       设计见 `docs/创意生成与闭环设计.md`（提示词五要素 + 自评 + 示例 + 人类反馈闭环）
+- [ ] **L5 实验数据回填**：Experiment Memory 结构/可靠性分/performance filter 就位，
+      等真实 Campaign 数据（当前为空，L4 `search_experiments` 如实返回空）
+- [ ] **L5 语义检索升级**：L2 embedding 库灌数据后把 `lexical_bigram` 换成向量 backend
+      （`RetrievalEngine` 接口与产物不变，第四层零改动）
+- [ ] **L5 A/B Evaluation（§51）**：同批事件"有/无记忆"两组对照运行，
+      比较业务采用率 / 评审分 / Token 成本（当前如实 insufficient_data）
 - [ ] LLM 决策与定性路径实跑验证（当前规则模式全链路可用；余额 402 阻塞）  
 - [ ] 人工金标回收后输出正式一致率  
 - [ ] 传播维度：修复 support_count 采集后激活「高传播差评」层  

@@ -72,6 +72,9 @@ def research(state: Dict[str, Any], upstream: Any, tools: Dict[str, Any],
     plan = ["search_event_content"]
     if goal["entities"]:
         plan.append("get_entity_history")
+    # §43：第五层记忆先于外部检索 —— 历史经验免费、结构化、可溯源；
+    # search_similar_cases 在 plan[:max_steps] 内优先于 search_web（后者本机本就不可用）
+    plan.append("search_similar_cases")
     plan.append("search_web")
 
     for name in plan[:max_steps]:

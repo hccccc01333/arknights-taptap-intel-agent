@@ -119,8 +119,54 @@ def _get_entity_history(upstream: Any, entity: str) -> Dict[str, Any]:
 
 
 def _search_experiments(upstream: Any, growth_goal: Optional[str] = None) -> List[Dict[str, Any]]:
-    """历史增长实验（§37）。本机没有真实实验库 → 返回空并标明，**不编造历史效果数据**。"""
-    return []
+    """历史增长实验（§37）—— 2026-10-03 起走第五层 Memory Retrieval（§24 统一入口）。
+
+    L5 记忆库不存在 → 返回空（= 「没有历史实验」，如实）；有库时只回**正 lift** 的实验包。
+    """
+    from intelligence import retrieval as mem
+    items = mem.similar_experiments(query=growth_goal or "增长实验")
+    out = []
+    for it in items:
+        result = it.get("result") or {}
+        out.append({
+            "case_id": it.get("experiment_id"),
+            "lift": result.get("best_relative_lift"),
+            "metric": result.get("primary_metric"),
+            "treatment": it.get("treatment"),
+            "reliability": it.get("reliability"),
+            "memory_tier": it.get("tier"),
+        })
+    return out
+
+
+def _search_similar_cases(query: str = "", top_k: int = 5) -> List[Dict[str, Any]]:
+    """历史 Growth Case（§29）—— 检索第五层 Case Memory，给 Opportunity/Creative 引用。"""
+    from intelligence import retrieval as mem
+    out = []
+    for it in mem.similar_cases(query=query, top_k=top_k):
+        out.append({
+            "case_id": it.get("case_id"),
+            "strategy": it.get("strategy"),
+            "creative_type": it.get("creative_type"),
+            "result": it.get("result"),
+            "lessons": (it.get("lessons") or [])[:2],
+            "reliability": it.get("reliability"),
+            "human_verified": it.get("human_verified"),
+            "memory_tier": it.get("tier"),
+        })
+    return out
+
+
+def _get_game_profile(entity: str) -> Dict[str, Any]:
+    """游戏知识（实体与别名）—— 优先第五层 Entity Knowledge（games.registry 已入记忆）。"""
+    from intelligence import retrieval as mem
+    profile = mem.entity_profile(entity)
+    if profile:
+        payload = profile.get("payload") or {}
+        return {"entity": profile["subject"], "title": profile.get("title"),
+                "aliases": payload.get("aliases") or [], "app_id": payload.get("app_id"),
+                "source": f"l5.memory:{profile.get('item_id')}"}
+    return {"entity": entity, "note": "实体知识库未命中，返回实体本身", "aliases": [entity]}
 
 
 def build_tools(upstream: Any) -> Dict[str, Tool]:
@@ -129,10 +175,10 @@ def build_tools(upstream: Any) -> Dict[str, Tool]:
              lambda **kw: _search_event_content(upstream, **kw),
              {"sources": ["l2.processed_content"], "granularity": "full", "via_llm": False,
               "returns": ["content_id", "tier", "excerpt", "has_official_signal"]}),
-        Tool("get_game_profile", "游戏知识（实体与别名）",
-             lambda entity: {"entity": entity, "note": "游戏档案库未接入，返回实体本身"},
-             {"sources": ["games.registry"], "granularity": "short", "via_llm": False,
-              "returns": ["entity", "aliases"]}),
+        Tool("get_game_profile", "游戏知识（实体与别名；第五层 Entity Knowledge）",
+             lambda entity: _get_game_profile(entity),
+             {"sources": ["games.registry", "l5.entity_knowledge"], "granularity": "short",
+              "via_llm": False, "returns": ["entity", "aliases"]}),
         Tool("get_entity_history", "该实体过去出现在哪些事件",
              lambda entity: _get_entity_history(upstream, entity),
              {"sources": ["l3.trend_event"], "granularity": "short", "via_llm": False,
@@ -142,11 +188,15 @@ def build_tools(upstream: Any) -> Dict[str, Tool]:
              {"sources": ["taptap.internal"], "granularity": "short", "via_llm": False,
               "returns": ["hit_count", "sample_ids"]}, available=False,
              unavailable_reason="未接入 TapTap 站内历史库"),
-        # granularity=none：读的是结构化实验记录，不是文本 → 按契约不许声明 sources
-        Tool("search_experiments", "历史增长实验结果",
+        # granularity=none：读的是结构化实验记录 / Case 记录，不是文本 → 按契约不许声明 sources
+        Tool("search_experiments", "历史增长实验结果（第五层 Experiment Memory）",
              lambda **kw: _search_experiments(upstream, **kw),
              {"sources": [], "granularity": "none", "via_llm": False,
               "returns": ["case_id", "lift"]}),
+        Tool("search_similar_cases", "历史 Growth Case（第五层 Case Memory，§29）",
+             lambda **kw: _search_similar_cases(**kw),
+             {"sources": [], "granularity": "none", "via_llm": False,
+              "returns": ["case_id", "strategy", "lessons"]}),
         Tool("search_web", "外部检索",
              lambda **kw: (_ for _ in ()).throw(ToolUnavailable("本机无外网检索凭据")),
              {"sources": ["web"], "granularity": "full", "via_llm": True,

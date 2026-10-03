@@ -31,6 +31,7 @@ L3 = ROOT / "L3_semantic"
 L3_TREND = ROOT / "L3_trend"
 L4 = ROOT / "L4_intelligence"
 L5 = ROOT / "L5_generation"
+L5_MEMORY = ROOT / "L5_memory"          # 设计口径的第五层：知识与增长记忆
 L6 = ROOT / "L6_delivery"
 RUNTIME = ROOT / "runtime"
 COMMON = ROOT / "common"
@@ -43,6 +44,7 @@ LAYERS: Dict[str, Path] = {
     "L3": L3_TREND, "L3_trend": L3_TREND,
     "L4": L4, "L4_intelligence": L4,
     "L5": L5, "L5_generation": L5,
+    "L5_memory": L5_MEMORY,
     "L6": L6, "L6_delivery": L6,
     "runtime": RUNTIME,
     "common": COMMON,

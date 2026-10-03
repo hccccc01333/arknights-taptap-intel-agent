@@ -116,6 +116,8 @@ python L4_intelligence/intelligence/pipeline.py --stats
    Research 结果标 `status=incomplete` 并把缺口传给 Risk，**不返回假检索结果**。
 4. **历史实验库为空** → `search_experiments` 返回空列表。§37 的"在 TapTap 历史实验数据上推理"
    目前无法兑现，创意仍是规则组合而非历史案例检索。
+   （2026-10-03 已接通第五层 `L5_memory`：工具走真记忆检索，库空返回空仍是如实的——
+   等真实 Campaign 数据回填 Experiment Memory 后自动生效。）
 5. **Evidence 全部 COMMUNITY** → 事实风险恒为 high，创意不能对外用断言式措辞。
 
 ---
@@ -132,7 +134,9 @@ L4_intelligence/
 │   ├── tools.py         只读工具 + text_access 声明（§17）
 │   ├── upstream.py      L3 事件 / L2 内容只读访问（原文不进 State）
 │   ├── store.py         产物版本化 + 人工反馈 + 缓存 + 分级闸门（§35/§44/§45/§46）
-│   ├── retrieval.py     （待建）混合检索：历史案例（§37/§38）
+│   ├── retrieval.py     ★ 第五层记忆检索适配（§37/§38 已接通：similar_trends/experiments、
+│   │                     product_capabilities、failure_cases、entity_profile、context_for；
+│   │                     L5 库缺失时 available()=False 返回空，不编造）
 │   ├── nodes/
 │   │   ├── evidence.py      Evidence Builder + 事实层级（§8/§9）
 │   │   ├── analysis.py      Trend Analyst / Relevance / Audience（§10-§19）
