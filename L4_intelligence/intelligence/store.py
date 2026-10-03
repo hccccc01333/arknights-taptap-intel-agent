@@ -132,6 +132,13 @@ class IntelligenceStore:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
+        # ★ 并发写保护：多事件并发时每个线程一套连接，会争同一个库文件。
+        #   不给 busy_timeout 的话会直接抛 "database is locked"。
+        self.conn.execute("PRAGMA busy_timeout=10000")
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            pass                      # 某些文件系统不支持 WAL，退回去即可
         self.conn.executescript(_DDL)
         self.conn.commit()
 

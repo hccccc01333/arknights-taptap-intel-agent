@@ -34,25 +34,44 @@ from intelligence.nodes import evaluation as N_eval  # noqa: E402
 
 
 class FakeRouter:
-    """替身：按 `reply` 返回结构化结果；`fail=True` 时模拟调用失败。"""
+    """替身：按 `reply` 返回结构化结果；`fail=True` 时模拟调用失败。
 
-    def __init__(self, reply=None, fail=False):
+    `reply_seq` 用于模拟**多轮调用返回不同结果**（补评场景）：按调用次序取，
+    取完后用最后一个。
+    """
+
+    def __init__(self, reply=None, fail=False, reply_seq=None):
         self.enabled = True
         self.reply = reply if reply is not None else {}
         self.fail = fail
+        self.reply_seq = list(reply_seq) if reply_seq else None
         self.last_errors: list = []
         self.last_raw: dict = {}
+        self.events: list = []
         self.calls: int = 0
+
+    def log_event(self, node, kind, reason="", **fields):
+        ev = {"node": node, "kind": kind, "reason": reason}
+        ev.update(fields)
+        self.events.append(ev)
+        self.last_errors.append(f"{node}: {reason or kind}")
+
+    def _current_reply(self):
+        if not self.reply_seq:
+            return self.reply
+        i = min(self.calls - 1, len(self.reply_seq) - 1)
+        return self.reply_seq[i]
 
     def call_json(self, node, prompt, system=None, max_tokens=1500, repair_hint=None):
         self.calls += 1
         if self.fail:
             self.last_errors.append(f"{node}: 模拟失败")
             return None
-        if not self.reply:                      # 空回复：模拟「解析成功但内容为空」
+        rep = self._current_reply()
+        if not rep:                             # 空回复：模拟「解析成功但内容为空」
             self.last_errors.append(f"{node}: 输出不是 JSON 对象")
             return None
-        out = dict(self.reply)
+        out = dict(rep)
         out["_llm"] = {"model": "fake/model:free", "seconds": 0.1, "usage": {}}
         return out
 
@@ -292,6 +311,156 @@ class TestQuotaCircuitBreaker(unittest.TestCase):
         self.assertEqual(len(r.last_errors), before)
 
 
+class TestEmptyResultIsRetried(unittest.TestCase):
+    """★ `repair_hint` 原本只在**解析失败**时重试，而 soft_empty（解析成功、数组空）
+    会直接落规则兜底 —— 实测 creative 就这样白丢一整轮模型输出。
+    完整性优先：解析成功但没内容，等同于没拿到结果，值得再要一次。"""
+
+    def _state(self):
+        pack = _pack()
+        st = {"event_id": "e1", "evidence_pack": pack,
+              "relevance": N_analysis.relevance(pack),
+              "audiences": N_analysis.audience(pack, {}),
+              "opportunities": [], "growth_hypotheses": [], "creatives": []}
+        st["opportunities"] = __import__(
+            "intelligence.nodes.opportunity", fromlist=["opportunity"]).opportunity(st)
+        st["creatives"] = N_creative.generate(st)
+        return st
+
+    def _creative_payload(self, idea_name="模型想的捏脸大赛"):
+        return {"creatives": [{
+            "idea_name": idea_name, "creative_type": "ugc", "insight": "玩家爱晒捏脸",
+            "concept": "发起捏脸大赛", "user_flow": ["进入社区", "上传捏脸", "投票"],
+            "distribution_channels": ["社区话题"], "primary_metric": "UGC数",
+            "secondary_metrics": ["互动率"], "dependencies": ["话题页"],
+            "risks": ["参与度不足"]}]}
+
+    def test_empty_then_filled_is_retried_and_adopted(self):
+        st = self._state()
+        rule_creatives = st["creatives"]
+        r = FakeRouter(reply_seq=[{"nothing_here": 1}, self._creative_payload()])
+        try:
+            out = AUG.augment_creative(rule_creatives, st, r)
+        except Exception as e:
+            self.fail(f"不应抛异常：{type(e).__name__}: {e}")
+        self.assertEqual(r.calls, 2, "空结果应触发补要")
+        self.assertTrue(any(e.get("kind") == "retry" for e in r.events),
+                        f"补要必须留痕，实际={r.events}")
+        self.assertTrue(any(c.get("mode") == "llm" for c in out),
+                        f"补要后应采纳模型创意，实际={[c.get('mode') for c in out]}")
+
+    def test_empty_twice_falls_back(self):
+        st = self._state()
+        r = FakeRouter(reply_seq=[{"nothing_here": 1}, {"still_nothing": 2}])
+        out = AUG.augment_creative(st["creatives"], st, r)
+        self.assertEqual(out, st["creatives"])     # 回退规则版
+
+    def test_filled_first_time_no_extra_call(self):
+        st = self._state()
+        r = FakeRouter(reply=self._creative_payload())
+        AUG.augment_creative(st["creatives"], st, r)
+        self.assertEqual(r.calls, 1, "第一次就有内容不该多调一次")
+
+
+class TestResponseCache(unittest.TestCase):
+    """缓存只在**输入完全一致**时命中。不换弱模型、不降 token，所以不损推理质量。"""
+
+    def test_same_input_hits(self):
+        c = L.LLMCache(path=None)
+        c.put("m/free", "sys", "prompt", 4200, True, {"a": 1})
+        self.assertEqual(c.get("m/free", "sys", "prompt", 4200, True), {"a": 1})
+
+    def test_different_prompt_misses(self):
+        c = L.LLMCache(path=None)
+        c.put("m/free", "sys", "prompt", 4200, True, {"a": 1})
+        self.assertIsNone(c.get("m/free", "sys", "prompt2", 4200, True))
+
+    def test_different_model_misses(self):
+        c = L.LLMCache(path=None)
+        c.put("m/free", "sys", "p", 4200, True, {"a": 1})
+        self.assertIsNone(c.get("other/free", "sys", "p", 4200, True))
+
+    def test_different_max_tokens_misses(self):
+        """max_tokens 影响输出完整度，必须进 key。"""
+        c = L.LLMCache(path=None)
+        c.put("m/free", "sys", "p", 4200, True, {"a": 1})
+        self.assertIsNone(c.get("m/free", "sys", "p", 1500, True))
+
+    def test_disabled_cache_never_hits(self):
+        c = L.LLMCache(path=None, enabled=False)
+        c.put("m/free", "sys", "p", 4200, True, {"a": 1})
+        self.assertIsNone(c.get("m/free", "sys", "p", 4200, True))
+
+    def test_cache_does_not_leak_mutable_reference(self):
+        c = L.LLMCache(path=None)
+        c.put("m/free", "sys", "p", 4200, True, {"a": 1})
+        got = c.get("m/free", "sys", "p", 4200, True)
+        got["a"] = 999
+        self.assertEqual(c.get("m/free", "sys", "p", 4200, True)["a"], 1)
+
+    def test_persists_to_disk(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "sub", "cache.jsonl")
+            c1 = L.LLMCache(path=path)
+            c1.put("m/free", "sys", "p", 4200, True, {"a": 42})
+            c2 = L.LLMCache(path=path)        # 新实例 = 新进程的效果
+            self.assertEqual(c2.get("m/free", "sys", "p", 4200, True), {"a": 42})
+
+
+class TestSharedQuotaBreakerAcrossThreads(unittest.TestCase):
+    """并发时额度熔断必须跨线程共享：一个线程撞到 429，其他别再白试一轮
+    （免费额度一天只有 50 次，白试就是真金白银）。"""
+
+    def test_event_is_shared(self):
+        import threading
+        ev = threading.Event()
+        r1 = L.ModelRouter(enabled=False, quota_event=ev)
+        r2 = L.ModelRouter(enabled=False, quota_event=ev)
+        r1._trip_quota("free-models-per-day", "creative", "m/free")
+        self.assertTrue(r2._quota_tripped(), "r2 应看到共享熔断")
+        self.assertTrue(r1.quota_exhausted)
+
+    def test_no_shared_event_is_isolated(self):
+        r1 = L.ModelRouter(enabled=False)
+        r2 = L.ModelRouter(enabled=False)
+        r1._trip_quota("x", "creative", "m/free")
+        self.assertFalse(r2._quota_tripped())
+
+
+class TestEventLogIsStructured(unittest.TestCase):
+    """可观测性：每次失败/补评/兜底都要有**结构化**记录，而不是只能人肉读的字符串。"""
+
+    def test_log_event_records_kind_and_reason(self):
+        r = L.ModelRouter(enabled=False)
+        r.log_event("creative", "parse_failed", "输出不是 JSON 对象",
+                    model="m/free", truncated=True)
+        self.assertEqual(len(r.events), 1)
+        ev = r.events[0]
+        self.assertEqual(ev["node"], "creative")
+        self.assertEqual(ev["kind"], "parse_failed")
+        self.assertTrue(ev["truncated"])
+        self.assertIn("creative", r.last_errors[0])   # 人类可读串仍然有
+
+    def test_kinds_are_from_fixed_vocabulary(self):
+        allowed = {"ok", "json_ok", "parse_failed", "call_failed", "quota_exhausted",
+                   "soft_empty", "unwrapped_single", "retry", "fallback"}
+        r = L.ModelRouter(enabled=False)
+        for k in sorted(allowed):
+            r.log_event("x", k, "r")
+        self.assertEqual({e["kind"] for e in r.events}, allowed)
+
+    def test_summary_counts_by_kind(self):
+        r = L.ModelRouter(enabled=False)
+        for _ in range(3):
+            r.log_event("a", "ok", "")
+        r.log_event("b", "parse_failed", "坏")
+        counts: dict = {}
+        for e in r.events:
+            counts[e["kind"]] = counts.get(e["kind"], 0) + 1
+        self.assertEqual(counts, {"ok": 3, "parse_failed": 1})
+
+
 class TestBatchEvalPartialCoverageIsVisible(unittest.TestCase):
     """★ 实测踩坑钉死：批量评审时模型只评了一部分（4 条只评 1 条），
     漏评的**悄悄回退规则且不留痕**，`llm_errors` 是空的 —— 跟 soft_empty 同一类静默降级。"""
@@ -311,7 +480,7 @@ class TestBatchEvalPartialCoverageIsVisible(unittest.TestCase):
         return {"relevance": 0.8, "user_insight": 0.7, "timing": 0.6, "growth": 0.7,
                 "feasibility": 0.8, "novelty": 0.5, "distribution": 0.6}
 
-    def test_partial_coverage_recorded(self):
+    def test_partial_coverage_triggers_retry_and_is_logged(self):
         st = self._state()
         creatives = st["creatives"]
         self.assertGreaterEqual(len(creatives), 2, "前置：至少 2 条创意")
@@ -320,8 +489,41 @@ class TestBatchEvalPartialCoverageIsVisible(unittest.TestCase):
             {"idea_id": creatives[0]["idea_id"], "dimensions": self._dims()}]})
         out = AUG.augment_evaluation(rule_evals, creatives, st, r)
         self.assertEqual(len(out), len(creatives))
-        self.assertTrue(any("partial_coverage" in e for e in r.last_errors),
-                        f"漏评必须留痕，实际={r.last_errors}")
+        self.assertEqual(r.calls, 2, "漏评必须触发补评")
+        self.assertTrue(any("补评" in e for e in r.last_errors),
+                        f"补评必须留痕，实际={r.last_errors}")
+
+    def test_retry_fills_the_gap(self):
+        """★ 核心：第 1 轮漏的，第 2 轮只补那几条 → 最终全部采纳模型评分。"""
+        st = self._state()
+        creatives = st["creatives"]
+        self.assertGreaterEqual(len(creatives), 2, "前置：至少 2 条创意")
+        rule_evals = [N_eval.evaluate(c, st, peers=creatives) for c in creatives]
+        first = {"evaluations": [
+            {"idea_id": creatives[0]["idea_id"], "dimensions": self._dims()}]}
+        second = {"evaluations": [
+            {"idea_id": c["idea_id"], "dimensions": self._dims()}
+            for c in creatives[1:]]}
+        r = FakeRouter(reply_seq=[first, second])
+        out = AUG.augment_evaluation(rule_evals, creatives, st, r)
+        self.assertEqual(r.calls, 2)
+        self.assertTrue(all(e.get("mode") == "llm" for e in out),
+                        f"补评后应全部采纳，实际={[e.get('mode') for e in out]}")
+        self.assertFalse(any("规则兜底" in e for e in r.last_errors),
+                         f"不该兜底，实际={r.last_errors}")
+
+    def test_still_missing_after_retry_falls_back_with_reason(self):
+        st = self._state()
+        creatives = st["creatives"]
+        rule_evals = [N_eval.evaluate(c, st, peers=creatives) for c in creatives]
+        only_first = {"evaluations": [
+            {"idea_id": creatives[0]["idea_id"], "dimensions": self._dims()}]}
+        r = FakeRouter(reply_seq=[only_first, only_first])
+        out = AUG.augment_evaluation(rule_evals, creatives, st, r)
+        self.assertEqual(r.calls, 2)
+        self.assertTrue(any("规则兜底" in e for e in r.last_errors),
+                        f"补评仍漏要留痕，实际={r.last_errors}")
+        self.assertTrue(any(e.get("mode") == "rule_fallback_after_llm_error" for e in out))
 
     def test_full_coverage_not_flagged(self):
         st = self._state()
@@ -357,8 +559,8 @@ class TestUnwrappedSingleObject(unittest.TestCase):
         out = AUG.augment_risk(rule_risk, st, r)
         self.assertTrue(any(x.get("source") == "llm" for x in out["risks"]),
                         f"裸对象应被采纳，实际={out['risks']}")
-        self.assertTrue(any("unwrapped_single" in e for e in r.last_errors),
-                        f"必须留痕，实际={r.last_errors}")
+        self.assertTrue(any(e.get("kind") == "unwrapped_single" for e in r.events),
+                        f"必须留痕（结构化 events），实际={r.events}")
 
     def test_unrelated_object_is_not_accepted(self):
         """不相关的壳不能被当成条目 —— 宽容不等于什么都要。"""

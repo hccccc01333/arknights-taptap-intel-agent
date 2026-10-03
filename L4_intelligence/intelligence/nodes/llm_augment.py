@@ -73,15 +73,41 @@ def _items(obj: Optional[Dict[str, Any]], key: str, node: str,
         #   实测 risk 节点就是这样：顶层键是 type/level/description。
         #   前提是这些键确实属于条目本身，避免把解析错的壳当成条目。
         if single_item_keys and all(k in obj for k in single_item_keys):
-            router.last_errors.append(
-                f"{node}: 模型返回裸对象未套 `{key}` → 按单条采纳（unwrapped_single）")
+            router.log_event(node, "unwrapped_single",
+                             f"模型返回裸对象未套 `{key}` → 按单条采纳",
+                             key=key, top_keys=list(obj.keys())[:8])
             return [obj]
-        router.last_errors.append(
-            f"{node}: JSON 解析成功但 `{key}` 缺失或为空（soft_empty）"
-            f" 顶层键={list(obj.keys())[:8]}")
+        router.log_event(node, "soft_empty",
+                         f"JSON 解析成功但 `{key}` 缺失或为空（soft_empty）",
+                         key=key, top_keys=list(obj.keys())[:8])
         router.last_raw.setdefault(f"{node}:soft_empty", str(obj)[:600])
         return []
     return [x for x in v if isinstance(x, dict)]
+
+
+def _call_items(node: str, key: str, prompt: str, system: str, router: ModelRouter,
+                max_tokens: int = 4200, repair_hint: Optional[str] = None,
+                single_item_keys: Optional[tuple] = None):
+    """取一个列表型结果；**解析成功但内容为空时也要再要一次**。
+
+    ★ 为什么补这一步：`call_json` 的 `repair_hint` 只在**解析失败**时重试，
+      而 `soft_empty`（解析成功、数组是空的）会直接落到规则兜底 ——
+      实测 creative 就是这样白白丢掉一整轮模型输出。
+      完整性优先于速度：解析成功但没内容，等同于没拿到结果，值得再要一次。
+    返回 (obj, items)；obj 可能 None。
+    """
+    obj = router.call_json(node, prompt, system=system, max_tokens=max_tokens,
+                           repair_hint=repair_hint)
+    items = _items(obj, key, node, router, single_item_keys=single_item_keys)
+    if not items and obj is not None and repair_hint:
+        router.log_event(node, "retry", f"`{key}` 为空 → 再要一次（收窄要求）", key=key)
+        obj2 = router.call_json(node, f"{prompt}\n\n{repair_hint}", system=system,
+                                max_tokens=max_tokens)
+        items = _items(obj2, key, node, router, single_item_keys=single_item_keys)
+        if items:
+            return obj2, items
+        return obj2, items
+    return obj, items
 
 
 # ---------------------------------------------------------------- Trend Analyst
@@ -236,11 +262,10 @@ def augment_opportunity(rule_out: List[Dict[str, Any]], state: Dict[str, Any],
         constraint="每个机会必须说清增长从哪来；没有 growth_mechanism 的不成立",
     )
     # ★ 输出最长：4 个机会 × 每个约 10 个字段，1500 tokens 不够 → 会被截成半截 JSON
-    obj = router.call_json("opportunity", prompt, system=system_for("opportunity"),
-                           max_tokens=4200,
-                           repair_hint="上一次输出不完整。这次**只输出 2 个机会**，字段照旧，"
-                                       "必须输出完整可解析的 JSON 对象，不要截断。")
-    items = _items(obj, "opportunities", "opportunity", router)
+    obj, items = _call_items(
+        "opportunity", "opportunities", prompt, system_for("opportunity"), router,
+        repair_hint="上一次没有给出 `opportunities` 数组。这次**只输出 2 个机会**，"
+                    "顶层必须是 {'opportunities': [...]}，字段照旧，不要截断。")
     if not items:
         return rule_out
     from .opportunity import OPP_WEIGHTS, _mechanism_for, _platform_fit, _WINDOW_BY_LIFECYCLE
@@ -320,11 +345,10 @@ def augment_creative(rule_out: List[Dict[str, Any]], state: Dict[str, Any],
                        for c in rule_out],
     )
     # ★ 创意含 user_flow / risks 等多个列表，输出比 opportunity 还长
-    obj = router.call_json("creative", prompt, system=system_for("creative"),
-                           max_tokens=4200,
-                           repair_hint="上一次输出不完整。这次**只输出 2 条创意**，字段照旧，"
-                                       "必须输出完整可解析的 JSON 对象，不要截断。")
-    items = _items(obj, "creatives", "creative", router)
+    obj, items = _call_items(
+        "creative", "creatives", prompt, system_for("creative"), router,
+        repair_hint="上一次没有给出 `creatives` 数组。这次**只输出 2 条创意**，"
+                    "顶层必须是 {'creatives': [...]}，字段照旧，不要截断。")
     if not isinstance(items, list) or not items:
         return rule_out
     by_type = {c.get("creative_type"): c for c in rule_out}
@@ -361,84 +385,105 @@ def augment_creative(rule_out: List[Dict[str, Any]], state: Dict[str, Any],
 
 def augment_evaluation(rule_evals: List[Dict[str, Any]], creatives: List[Dict[str, Any]],
                        state: Dict[str, Any], router: ModelRouter) -> List[Dict[str, Any]]:
-    """§40：Evaluator 用**另一个模型 + 完全独立的 prompt** 评审。
+    """§40：Evaluator 用**独立 prompt** 评审（单模型模式下不再是独立模型，产物已如实标注）。
 
-    ★ 实测教训：最初**每条创意单独调一次**，8 条创意 = 8 次调用，叠加免费模型的限流退避，
-      单事件跑到 560 秒超时（exit=124）。改为**一次批量评审**：一次调用评完所有创意。
+    ★★ 三轮演进，前两次都是被实测打回来的：
+      ① 每条创意单独调（8 条 = 8 次调用）→ 叠加限流退避，单事件 560s 超时。
+      ② 一次批量评审 → 快了，但模型经常**只评一部分**（实测 4 条只评 1 条），
+         漏掉的悄悄回退规则，`llm_errors` 还是空的。
+      ③ 现在：**先评全部 → 漏了哪几条就只补那几条 → 补评还漏才规则兜底**。
+         每轮都收窄，最多 2 轮；补评只带漏评的创意，prompt 更短反而更容易评全。
     """
     if not getattr(router, "enabled", False) or not creatives:
         return rule_evals
-    pack = state.get("evidence_pack") or {}
-    prompt = _ctx(
-        event={"title": (pack.get("event") or {}).get("title"),
-               "lifecycle": (pack.get("event") or {}).get("lifecycle")},
-        creatives=[{"idea_id": c.get("idea_id"), "idea_name": c.get("idea_name"),
-                    "creative_type": c.get("creative_type"),
-                    "target_audience": c.get("target_audience"),
-                    "concept": c.get("concept"), "user_flow": c.get("user_flow"),
-                    "growth_mechanism": c.get("growth_mechanism"),
-                    "primary_metric": c.get("primary_metric"),
-                    "launch_window": c.get("launch_window"),
-                    "lead_time_hours": c.get("lead_time_hours")} for c in creatives],
-    )
-    obj = router.call_json("evaluator", prompt, system=system_for("evaluator"),
-                           max_tokens=4200,
-                           repair_hint="上一次输出不完整。请为**每条** idea_id 输出一个评分对象，"
-                                       "必须输出完整可解析的 JSON 对象，不要截断。")
-    items = _items(obj, "evaluations", "evaluator", router)
-    # ★ 判空必须看 `obj` 本身：`_items` 恒返回 list（obj=None 时返回 []），
-    #   只判 `isinstance(items, list)` 是死守卫 → 走到 obj.get("_llm") 直接 AttributeError。
-    if obj is None or not items:
-        return [_mark(e, "evaluator", router, ok=False) for e in rule_evals]
     from .evaluation import RUBRIC_WEIGHTS, PASS_SCORE
     keys = {"relevance": "R", "user_insight": "U", "timing": "T", "growth": "G",
             "feasibility": "F", "novelty": "N", "distribution": "D"}
     by_id = {r.get("idea_id"): r for r in rule_evals}
-    llm_meta = obj.get("_llm")
+    pack = state.get("evidence_pack") or {}
+
+    def _batch(subset: List[Dict[str, Any]], round_no: int) -> Dict[str, Dict[str, Any]]:
+        """发一次批量评审，返回 {idea_id: 采纳后的评审dict}（只含通过结构校验的）。"""
+        prompt = _ctx(
+            event={"title": (pack.get("event") or {}).get("title"),
+                   "lifecycle": (pack.get("event") or {}).get("lifecycle")},
+            creatives=[{"idea_id": c.get("idea_id"), "idea_name": c.get("idea_name"),
+                        "creative_type": c.get("creative_type"),
+                        "target_audience": c.get("target_audience"),
+                        "concept": c.get("concept"), "user_flow": c.get("user_flow"),
+                        "growth_mechanism": c.get("growth_mechanism"),
+                        "primary_metric": c.get("primary_metric"),
+                        "launch_window": c.get("launch_window"),
+                        "lead_time_hours": c.get("lead_time_hours")} for c in subset],
+            constraint=("必须为下面**每一条** idea_id 各输出一个评分对象，一条都不能漏"
+                        if round_no > 1 else None),
+        )
+        obj = router.call_json("evaluator", prompt, system=system_for("evaluator"),
+                               max_tokens=4200,
+                               repair_hint="上一次输出不完整。请为**每条** idea_id 输出一个评分对象，"
+                                           "必须输出完整可解析的 JSON 对象，不要截断。")
+        items = _items(obj, "evaluations", "evaluator", router)
+        # ★ 判空必须看 `obj` 本身：`_items` 恒返回 list（obj=None 时返回 []），
+        #   只判 isinstance(items, list) 是死守卫 → 会走到 obj.get("_llm") 直接崩。
+        if obj is None or not items:
+            return {}
+        llm_meta = obj.get("_llm")
+        got: Dict[str, Dict[str, Any]] = {}
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            iid = it.get("idea_id")
+            base = by_id.get(iid)
+            if base is None:            # 模型评了个不存在的 id → 忽略
+                continue
+            dims_raw = it.get("dimensions")
+            if not isinstance(dims_raw, dict):
+                continue
+            dims, ok = {}, True
+            for k in keys:
+                v = _dim01(dims_raw.get(k))
+                if v is None:
+                    ok = False
+                    break
+                dims[k] = round(v, 3)
+            if not ok:
+                continue                # 校验不过 → 当漏评，留给补评或规则兜底
+            score = round(max(0.0, min(1.0, sum(RUBRIC_WEIGHTS[keys[k]] * v
+                                                for k, v in dims.items()))), 3)
+            merged = dict(base)
+            merged.update({"dimensions": dims, "creative_score": score,
+                           "pass": score >= PASS_SCORE,
+                           "weaknesses": _as_str_list(it.get("weaknesses"), 5),
+                           "recommended_revision": _as_str_list(it.get("recommended_revision"), 5)})
+            got[iid] = _mark(merged, "evaluator", router, ok=True, llm=llm_meta)
+        return got
+
+    adopted: Dict[str, Dict[str, Any]] = {}
+    pending = list(creatives)
+    for round_no in (1, 2):
+        if not pending:
+            break
+        got = _batch(pending, round_no)
+        adopted.update(got)
+        missed = [c for c in pending if c.get("idea_id") not in got]
+        if not missed:
+            break
+        if round_no == 1:
+            router.log_event("evaluator", "retry",
+                             f"第 1 轮只覆盖 {len(got)}/{len(creatives)} 条 → 补评 {len(missed)} 条",
+                             covered=len(got), total=len(creatives), retry_n=len(missed),
+                             ids=[c.get("idea_id") for c in missed])
+        else:
+            router.log_event("evaluator", "fallback",
+                             f"补评后仍有 {len(missed)} 条未覆盖 → 规则兜底",
+                             uncovered=len(missed),
+                             ids=[c.get("idea_id") for c in missed])
+        pending = missed
+
     out: List[Dict[str, Any]] = []
-    used = set()
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        iid = it.get("idea_id")
-        base = by_id.get(iid)
-        if base is None:
-            continue
-        dims_raw = it.get("dimensions")
-        if not isinstance(dims_raw, dict):
-            out.append(_mark(base, "evaluator", router, ok=False))
-            used.add(iid)
-            continue
-        dims, ok = {}, True
-        for k in keys:
-            v = _dim01(dims_raw.get(k))
-            if v is None:
-                ok = False
-                break
-            dims[k] = round(v, 3)
-        if not ok:
-            out.append(_mark(base, "evaluator", router, ok=False))
-            used.add(iid)
-            continue
-        score = round(max(0.0, min(1.0, sum(RUBRIC_WEIGHTS[keys[k]] * v
-                                            for k, v in dims.items()))), 3)
-        merged = dict(base)
-        merged.update({"dimensions": dims, "creative_score": score,
-                       "pass": score >= PASS_SCORE,
-                       "weaknesses": _as_str_list(it.get("weaknesses"), 5),
-                       "recommended_revision": _as_str_list(it.get("recommended_revision"), 5)})
-        out.append(_mark(merged, "evaluator", router, ok=True, llm=llm_meta))
-        used.add(iid)
-    missed = [r.get("idea_id") for r in rule_evals if r.get("idea_id") not in used]
-    if missed:
-        # ★ 批量评审的**部分覆盖**必须留痕。实测：4 条创意模型只评了 1 条，
-        #   另外 3 条悄悄回退规则，而 `llm_errors` 是空的 —— 又一种静默降级。
-        router.last_errors.append(
-            f"evaluator: 批量评审只覆盖 {len(used)}/{len(rule_evals)} 条"
-            f"（partial_coverage）漏评={missed}")
-    for r in rule_evals:                      # 模型漏评的保留规则结果
-        if r.get("idea_id") not in used:
-            out.append(_mark(r, "evaluator", router, ok=False))
+    for r in rule_evals:
+        out.append(adopted.get(r.get("idea_id")) or
+                   _mark(r, "evaluator", router, ok=False))
     order = {c.get("idea_id"): i for i, c in enumerate(creatives)}
     out.sort(key=lambda e: order.get(e.get("idea_id"), 999))
     return out

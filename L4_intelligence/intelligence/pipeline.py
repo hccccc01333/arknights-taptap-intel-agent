@@ -65,7 +65,8 @@ def temporal_ok(up: Upstream, sample: int = 3000) -> bool:
 def run_event(up: Upstream, store: IntelligenceStore, event: Dict[str, Any],
               engine: str = "auto", use_cache: bool = True,
               human_review: bool = True, temporal_ok_flag: bool = False,
-              use_llm: bool = True) -> Dict[str, Any]:
+              use_llm: bool = True, quota_event: Any = None,
+              cache: Any = None) -> Dict[str, Any]:
     tier = tier_of(event, temporal_ok=temporal_ok_flag)
     if use_cache:
         cached = store.cached_analysis(event)
@@ -80,12 +81,55 @@ def run_event(up: Upstream, store: IntelligenceStore, event: Dict[str, Any],
     if not use_llm:
         from intelligence.llm import ModelRouter
         ctx.router = ModelRouter(enabled=False)
+    elif quota_event is not None or cache is not None:
+        # 并发模式：把共享的额度熔断信号与响应缓存挂到本事件的 router 上
+        ctx.router.quota_event = quota_event
+        ctx.router.cache = cache
     result = run(state, ctx, engine=engine)
     result["tier"] = tier
     result["trace"] = ctx.trace          # ★ 必须在保存前写，否则 payload 里没有轨迹
     result["analysis_id"] = store.save_analysis(event, result)
     result["cache_hit"] = False
     return result
+
+
+def _run_concurrently(events: List[Dict[str, Any]], args: Any,
+                      tok: bool) -> List[Dict[str, Any]]:
+    """多事件并发。★ 只并发**事件之间**——单个事件内部仍是串行的依赖链，
+    不能为了快把 evidence→trend_analyst→relevance 这种有依赖的节点打乱。
+
+    ★ 两条并发安全约束：
+      ① `Upstream` / `IntelligenceStore` 都在 `__init__` 里建 SQLite 连接，
+         **不跨线程** → 每个任务各建一套，不共享连接。
+      ② 额度熔断与响应缓存要**跨线程共享**，否则一个线程撞到 429，
+         其他线程还在各自白试一轮（浪费的是每日只有 50 次的额度）。
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from intelligence.llm import LLMCache
+    from paths import STATE          # ★ 跨层一律走根级 paths.py，不手拼路径
+
+    quota_event = threading.Event()
+    cache = LLMCache(path=str(STATE / "llm_cache.jsonl"),
+                     enabled=not args.no_llm_cache) if args.use_llm else None
+
+    def one(ev: Dict[str, Any]) -> Dict[str, Any]:
+        up_i = Upstream()
+        store_i = IntelligenceStore()
+        r = run_event(up_i, store_i, ev, engine=args.engine,
+                      use_cache=not args.no_cache, human_review=args.human_review,
+                      temporal_ok_flag=tok, use_llm=args.use_llm,
+                      quota_event=quota_event, cache=cache)
+        try:
+            store_i.conn.close()
+            up_i.close()
+        except Exception:
+            pass
+        return r
+
+    workers = max(1, min(args.workers, len(events)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return list(ex.map(one, events))          # map 保序 → 结果顺序与输入一致
 
 
 def to_package(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,6 +197,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--package", action="store_true", help="输出 §52 Growth Intelligence Package")
     ap.add_argument("--no-llm", dest="use_llm", action="store_false", default=True,
                     help="禁用 LLM，全部走规则兜底")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="并发处理几个事件（事件之间无依赖；默认 1 = 串行）")
+    ap.add_argument("--no-llm-cache", action="store_true",
+                    help="禁用同输入响应缓存（默认开启，省额度也省时间）")
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--feedback", nargs=3, metavar=("IDEA_ID", "DECISION", "REASON"))
     ap.add_argument("--history", help="查看某事件的历次分析（§44 不覆盖）")
@@ -189,20 +237,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             events = up.events(limit=5000)
 
-        results: List[Dict[str, Any]] = []
+        todo: List[Dict[str, Any]] = []
         skipped_t0 = 0
-        n = 0
         for ev in events:
             if tier_of(ev, temporal_ok=tok) not in MIN_TIER_FOR_AGENT:
                 skipped_t0 += 1
                 continue
-            r = run_event(up, store, ev, engine=args.engine,
-                          use_cache=not args.no_cache, human_review=args.human_review,
-                          temporal_ok_flag=tok, use_llm=args.use_llm)
-            results.append(r)
-            n += 1
-            if args.limit and n >= args.limit:
+            todo.append(ev)
+            if args.limit and len(todo) >= args.limit:
                 break
+
+        results: List[Dict[str, Any]] = []
+        if args.workers > 1 and len(todo) > 1:
+            results = _run_concurrently(todo, args, tok)
+        else:
+            for ev in todo:
+                results.append(run_event(up, store, ev, engine=args.engine,
+                                         use_cache=not args.no_cache,
+                                         human_review=args.human_review,
+                                         temporal_ok_flag=tok, use_llm=args.use_llm))
 
         if args.package or args.event:
             for r in results:

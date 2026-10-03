@@ -333,6 +333,20 @@ def run(state: Dict[str, Any], ctx: Ctx, engine: str = "auto") -> Dict[str, Any]
     for k in ("audiences", "opportunities", "creatives"):
         modes += [str(x.get("mode") or "") for x in (out.get(k) or [])]
     modes += [str(x.get("mode") or "") for x in ((out.get("evaluation") or {}).get("items") or [])]
+    events = list(getattr(ctx.router, "events", None) or [])
+    if events:
+        out["llm_events"] = events[:60]
+        summary: Dict[str, int] = {}
+        for e in events:
+            k = str(e.get("kind") or "?")
+            summary[k] = summary.get(k, 0) + 1
+        out["llm_event_summary"] = summary
+        # 「规则兜底/失败」类事件单列，一眼看出这一跑到底掉了几次
+        out["llm_degraded_events"] = [
+            {"node": e.get("node"), "kind": e.get("kind"), "reason": e.get("reason")}
+            for e in events if e.get("kind") in
+            ("parse_failed", "call_failed", "quota_exhausted", "soft_empty",
+             "unwrapped_single", "retry", "fallback")][:20]
     out["llm_single_model"] = bool(getattr(ctx.router, "single_model", False))
     # §40 要求 evaluator 与 creative 尽量不同模型；固定单模型时该性质不成立 → 如实标 False
     out["llm_evaluator_independent"] = not bool(getattr(ctx.router, "single_model", False))

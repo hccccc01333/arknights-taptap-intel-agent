@@ -13,10 +13,13 @@ Key 的存放：优先进程环境 `FREE_API_KEY`；本机实测它在 **Windows
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -168,7 +171,8 @@ class Usage:
 
 class ModelRouter:
     def __init__(self, enabled: Optional[bool] = None, overrides: Optional[Dict[str, str]] = None,
-                 timeout: int = 45, max_retries: int = 1, usage: Optional[Usage] = None):
+                 timeout: int = 45, max_retries: int = 1, usage: Optional[Usage] = None,
+                 quota_event: Optional[Any] = None, cache: Optional[Any] = None):
         self.enabled = has_llm() if enabled is None else (enabled and has_llm())
         self.overrides = overrides or {}
         self.timeout = timeout
@@ -180,6 +184,40 @@ class ModelRouter:
         self.quota_exhausted: bool = False      # 免费额度熔断
         self.quota_reason: str = ""
         self.reasoning_effort: Optional[str] = "low"   # 压思考预算；不支持时自动置 None
+        self.events: List[Dict[str, Any]] = []  # ★ 结构化事件日志（可观测性的唯一真相源）
+        # 多事件并发时共享：一个线程撞到额度耗尽，其他线程立刻停，别再白试一轮
+        self.quota_event = quota_event
+        self.cache = cache                      # 同输入复用（省额度、省时间），可关闭
+
+    def _quota_tripped(self) -> bool:
+        if self.quota_exhausted:
+            return True
+        ev = self.quota_event
+        return bool(ev is not None and ev.is_set())
+
+    def _trip_quota(self, reason: str, node: str, model: Optional[str]) -> None:
+        self.quota_exhausted = True
+        self.quota_reason = reason[:160]
+        if self.quota_event is not None:
+            self.quota_event.set()
+        self.log_event(node, "quota_exhausted",
+                       "免费额度耗尽 → 熔断，后续节点走规则", model=model)
+
+    # ---- 事件日志 ----
+    def log_event(self, node: str, kind: str, reason: str = "", **fields: Any) -> None:
+        """记录一条可查的事件。
+
+        ★ 为什么需要结构化而不仅是 `last_errors` 字符串列表：
+          事后要回答的是「哪个节点、哪一类原因、多少次」——字符串列表只能人肉读，
+          没法聚合。`kind` 固定 vocabulary，产物里能直接统计。
+
+        kind 取值：ok / json_ok / parse_failed / call_failed / quota_exhausted /
+                   soft_empty / unwrapped_single / retry / fallback
+        """
+        ev: Dict[str, Any] = {"node": node, "kind": kind, "reason": reason}
+        ev.update({k: v for k, v in fields.items() if v is not None})
+        self.events.append(ev)
+        self.last_errors.append(f"{node}: {reason or kind}")
 
     # ---- 路由 ----
     @property
@@ -252,8 +290,9 @@ class ModelRouter:
         既浪费时间（每个都要等重试退避），又把失败噪声灌满 `llm_errors`。
         一旦确认是额度耗尽，本次进程内直接停用 LLM，后续节点走规则，并在产物里标清楚。
         """
-        if self.quota_exhausted:
-            raise LLMUnavailable(f"QUOTA_EXHAUSTED（{self.quota_reason}）→ 本进程停用 LLM，走规则")
+        if self._quota_tripped():
+            raise LLMUnavailable(f"QUOTA_EXHAUSTED（{self.quota_reason or '其他线程已熔断'}）"
+                                 f"→ 停用 LLM，走规则")
         info = self.resolve(node)
         if info["mode"] != "llm":
             raise LLMUnavailable(info.get("reason") or "未启用模型")
@@ -269,7 +308,10 @@ class ModelRouter:
         for m in tried:
             for attempt in range(self.max_retries):
                 try:
-                    return self.chat(m, msgs, max_tokens=max_tokens, json_mode=json_mode)
+                    res = self.chat(m, msgs, max_tokens=max_tokens, json_mode=json_mode)
+                    self.log_event(node, "ok", "调用成功", model=m,
+                                   seconds=res.get("seconds"), round_note="主调用")
+                    return res
                 except LLMUnavailable as e:
                     last = str(e)
                     if "JSON_MODE_UNSUPPORTED" in str(e):
@@ -281,13 +323,11 @@ class ModelRouter:
                     if "空 content" in str(e):
                         break                 # 换模型，不重试同一模型
                     if _is_quota_error(str(e)):
-                        self.quota_exhausted = True
-                        self.quota_reason = str(e)[:160]
-                        self.last_errors.append(f"{node}: 免费额度耗尽 → 熔断，后续节点走规则")
+                        self._trip_quota(str(e), node, m)
                         raise LLMUnavailable(f"QUOTA_EXHAUSTED: {str(e)[:160]}")
                     time.sleep(1.0)
         self.usage.failures += 1
-        self.last_errors.append(f"{node}: {last}")
+        self.log_event(node, "call_failed", f"全部模型失败：{last}", model=tried[0] if tried else None)
         raise LLMUnavailable(f"节点 {node} 全部模型失败：{last}")
 
     # ---- 结构化输出 ----
@@ -303,8 +343,17 @@ class ModelRouter:
              根本不知道是截断还是模型不听话；
           ③ **一次自愈重试**：带上 `repair_hint`（要求少输出几条），仍失败才放弃。
         """
-        if self.quota_exhausted:
+        if self._quota_tripped():
             return None                       # 已熔断：不再重复记错误，产物顶层有总标记
+        cache = self.cache
+        if cache is not None:
+            hit = cache.get(self.resolve(node).get("model") or "", system, prompt,
+                            max_tokens, True)
+            if isinstance(hit, dict):
+                self.log_event(node, "cache_hit", "命中响应缓存，未调用模型",
+                               model=self.resolve(node).get("model"))
+                hit = dict(hit)               # 别让调用方改到缓存里的对象
+                return hit
         try:
             res = self.call(node, prompt, system=system, max_tokens=max_tokens, json_mode=True)
         except LLMUnavailable as e:
@@ -316,9 +365,10 @@ class ModelRouter:
             raw = (res.get("content") or "").strip()
             truncated = bool(raw) and not raw.rstrip().endswith(("}", "]"))
             why = "疑似被 max_tokens 截断" if truncated else "模型未按要求输出 JSON"
-            self.last_errors.append(
-                f"{node}: 输出不是 JSON 对象（{why}，len={len(raw)}）"
-                f" head={raw[:120]!r} tail={raw[-80:]!r}")
+            self.log_event(node, "parse_failed",
+                           f"输出不是 JSON 对象（{why}，len={len(raw)}）",
+                           model=res.get("model"), why=why,
+                           truncated=truncated, raw_len=len(raw))
             self.last_raw[node] = raw[:2000]
             if repair_hint and not self._repairing:
                 self._repairing = True
@@ -330,7 +380,89 @@ class ModelRouter:
             return None
         obj["_llm"] = {"model": res["model"], "seconds": res["seconds"],
                        "usage": res["usage"]}
+        self.log_event(node, "json_ok", "JSON 解析成功",
+                       model=res["model"], seconds=res["seconds"],
+                       keys=list(obj.keys())[:8])
+        if cache is not None:
+            cache.put(res["model"], system, prompt, max_tokens, True, obj)
         return obj
+
+
+class LLMCache:
+    """同输入复用模型响应（省额度、省时间，不损推理质量）。
+
+    ★ 只在**输入完全一致**时命中：sha256(model + system + prompt + max_tokens +
+      提示词版本 + 是否 JSON 模式)。温度带来的随机性不是"质量"，
+      所以复用上次结果不会让结论变差，反而让重跑可复现。
+    ★ 带锁：多事件并发时共享同一个缓存对象。
+    """
+
+    def __init__(self, path: Optional[str] = None, enabled: bool = True) -> None:
+        self.enabled = enabled
+        self.path = path
+        self._lock = threading.Lock()
+        self._mem: Dict[str, Any] = {}
+        self.hits = 0
+        self.misses = 0
+        self._loaded = False
+
+    def _key(self, model: str, system: Optional[str], prompt: str,
+             max_tokens: int, json_mode: bool) -> str:
+        raw = "\n".join([str(model), system or "", prompt, str(max_tokens),
+                         "1" if json_mode else "0", MODEL_ROUTER_VERSION])
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _ensure_loaded(self) -> None:
+        if self._loaded or not self.path or not os.path.exists(self.path):
+            self._loaded = True
+            return
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(obj, dict) and obj.get("k"):
+                        self._mem[obj["k"]] = obj.get("v")
+        except OSError:
+            pass
+        self._loaded = True
+
+    def get(self, model: str, system: Optional[str], prompt: str,
+            max_tokens: int, json_mode: bool) -> Optional[Any]:
+        if not self.enabled:
+            return None
+        k = self._key(model, system, prompt, max_tokens, json_mode)
+        with self._lock:
+            self._ensure_loaded()
+            v = self._mem.get(k)
+            if v is not None:
+                self.hits += 1
+                # ★ 必须深拷贝：调用方会往结果里塞 `_llm` / `mode` 等字段，
+                #   直接返回引用会把缓存污染掉（测试钉死）。
+                return copy.deepcopy(v)
+            self.misses += 1
+            return None
+
+    def put(self, model: str, system: Optional[str], prompt: str,
+            max_tokens: int, json_mode: bool, value: Any) -> None:
+        if not self.enabled:
+            return
+        k = self._key(model, system, prompt, max_tokens, json_mode)
+        with self._lock:
+            self._ensure_loaded()
+            self._mem[k] = value
+            if self.path:
+                try:
+                    os.makedirs(os.path.dirname(self.path), exist_ok=True)
+                    with open(self.path, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"k": k, "v": value}, ensure_ascii=False) + "\n")
+                except OSError:
+                    pass
 
 
 def _is_quota_error(msg: str) -> bool:
