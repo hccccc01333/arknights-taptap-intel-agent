@@ -333,6 +333,9 @@ def run(state: Dict[str, Any], ctx: Ctx, engine: str = "auto") -> Dict[str, Any]
     for k in ("audiences", "opportunities", "creatives"):
         modes += [str(x.get("mode") or "") for x in (out.get(k) or [])]
     modes += [str(x.get("mode") or "") for x in ((out.get("evaluation") or {}).get("items") or [])]
+    out["llm_single_model"] = bool(getattr(ctx.router, "single_model", False))
+    # §40 要求 evaluator 与 creative 尽量不同模型；固定单模型时该性质不成立 → 如实标 False
+    out["llm_evaluator_independent"] = not bool(getattr(ctx.router, "single_model", False))
     out["llm_adoption"] = {
         "llm": sum(1 for m in modes if m == "llm"),
         "rule": sum(1 for m in modes if m.startswith("rule")),

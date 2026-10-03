@@ -56,7 +56,8 @@ def _ctx(**kw: Any) -> str:
 
 
 def _items(obj: Optional[Dict[str, Any]], key: str, node: str,
-           router: ModelRouter) -> List[Dict[str, Any]]:
+           router: ModelRouter,
+           single_item_keys: Optional[tuple] = None) -> List[Dict[str, Any]]:
     """取 `obj[key]` 列表；**缺失/为空时留痕再回退**。
 
     ★ 实测踩坑（2026-10-02）：opportunity/creative 曾有两种失败，一种是解析失败（有报错），
@@ -68,6 +69,13 @@ def _items(obj: Optional[Dict[str, Any]], key: str, node: str,
         return []
     v = obj.get(key)
     if not isinstance(v, list) or not v:
+        # ★ 模型给了**裸对象**（没套 `{key: [...]}`）时也接受，但必须留痕。
+        #   实测 risk 节点就是这样：顶层键是 type/level/description。
+        #   前提是这些键确实属于条目本身，避免把解析错的壳当成条目。
+        if single_item_keys and all(k in obj for k in single_item_keys):
+            router.last_errors.append(
+                f"{node}: 模型返回裸对象未套 `{key}` → 按单条采纳（unwrapped_single）")
+            return [obj]
         router.last_errors.append(
             f"{node}: JSON 解析成功但 `{key}` 缺失或为空（soft_empty）"
             f" 顶层键={list(obj.keys())[:8]}")
@@ -91,7 +99,9 @@ def augment_trend_analyst(rule_out: Dict[str, Any], pack: Dict[str, Any],
                    "excerpt": e["excerpt"]} for e in (pack.get("evidence") or [])[:8]],
         unknowns=pack.get("unknowns"),
     )
-    obj = router.call_json("trend_analyst", prompt, system=system_for("trend_analyst"))
+    obj = router.call_json("trend_analyst", prompt, system=system_for("trend_analyst"),
+                           max_tokens=4200,
+                           repair_hint="上一次输出不完整。字段照旧，必须输出完整可解析的 JSON 对象。")
     if not obj or not isinstance(obj.get("what_happened"), str):
         return _mark(rule_out, "trend_analyst", router, ok=False)
     out = dict(rule_out)
@@ -127,7 +137,9 @@ def augment_relevance(rule_out: Dict[str, Any], pack: Dict[str, Any],
                        for a, v in list(ASSET_BY_ID.items())],
         rule_baseline=rule_out.get("dimensions"),
     )
-    obj = router.call_json("relevance", prompt, system=system_for("relevance"))
+    obj = router.call_json("relevance", prompt, system=system_for("relevance"),
+                           max_tokens=4200,
+                           repair_hint="上一次输出不完整。字段照旧，必须输出完整可解析的 JSON 对象。")
     dims_raw = (obj or {}).get("dimensions")
     if not isinstance(dims_raw, dict):
         return _mark(rule_out, "relevance", router, ok=False)
@@ -169,7 +181,9 @@ def augment_audience(rule_out: List[Dict[str, Any]], pack: Dict[str, Any],
                                for m in MOTIVATION_BY_ID.values()],
         rule_baseline=rule_out,
     )
-    obj = router.call_json("audience", prompt, system=system_for("audience"))
+    obj = router.call_json("audience", prompt, system=system_for("audience"),
+                           max_tokens=4200,
+                           repair_hint="上一次输出不完整。只输出 3 个人群，必须完整可解析。")
     items = _items(obj, "audiences", "audience", router)
     if not isinstance(items, list) or not items:
         return rule_out
@@ -415,6 +429,13 @@ def augment_evaluation(rule_evals: List[Dict[str, Any]], creatives: List[Dict[st
                        "recommended_revision": _as_str_list(it.get("recommended_revision"), 5)})
         out.append(_mark(merged, "evaluator", router, ok=True, llm=llm_meta))
         used.add(iid)
+    missed = [r.get("idea_id") for r in rule_evals if r.get("idea_id") not in used]
+    if missed:
+        # ★ 批量评审的**部分覆盖**必须留痕。实测：4 条创意模型只评了 1 条，
+        #   另外 3 条悄悄回退规则，而 `llm_errors` 是空的 —— 又一种静默降级。
+        router.last_errors.append(
+            f"evaluator: 批量评审只覆盖 {len(used)}/{len(rule_evals)} 条"
+            f"（partial_coverage）漏评={missed}")
     for r in rule_evals:                      # 模型漏评的保留规则结果
         if r.get("idea_id") not in used:
             out.append(_mark(r, "evaluator", router, ok=False))
@@ -440,8 +461,11 @@ def augment_risk(rule_out: Dict[str, Any], state: Dict[str, Any],
                    for c in (state.get("creatives") or [])[:5]],
         rule_baseline=rule_out.get("risks"),
     )
-    obj = router.call_json("risk", prompt, system=system_for("risk"))
-    items = _items(obj, "risks", "risk", router)
+    obj = router.call_json("risk", prompt, system=system_for("risk"),
+                           max_tokens=4200,
+                           repair_hint="上一次输出不完整。只输出 3 条风险，必须完整可解析。")
+    items = _items(obj, "risks", "risk", router,
+                   single_item_keys=("type", "level"))
     if obj is None or not items:                 # 同上：必须判 obj，不是判 items 的类型
         return _mark(rule_out, "risk", router, ok=False)
     merged = list(rule_out.get("risks") or [])

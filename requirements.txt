@@ -3,3 +3,8 @@ openpyxl>=3.1
 requests>=2.31
 openai>=1.40
 matplotlib>=3.8
+
+# 真 StateGraph 引擎（2026-10-03 装上，实测 langgraph 1.2.12 / langchain-core 1.6.6 可用）。
+# ★ 可选依赖：没装时 L4 走纯标准库执行器 run_stdlib，两者共用 graph/routing.py 同一批判定，
+#   产物标 engine=stdlib_fallback —— 不假装跑过图。装上后 engine=langgraph。
+langgraph>=1.2

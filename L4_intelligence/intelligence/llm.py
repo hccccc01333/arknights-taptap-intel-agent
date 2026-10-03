@@ -62,7 +62,13 @@ FALLBACKS: Dict[str, List[str]] = {
     "openrouter/free": ["nvidia/nemotron-3-ultra-550b-a55b:free"],
 }
 
-MODEL_ROUTER_VERSION = "router-2.0-openrouter-free"
+# ★ 2026-10-03 用户要求：**全部节点固定用这一个模型**（便于对比与排查）。
+#   置回 `None` 即恢复按档位路由 —— 注意档位路由里含 §40 的
+#   「evaluator 与 creative 尽量不同模型」，固定单模型时**该性质不成立**，
+#   产物会如实标 `single_model=True` / `evaluator_independent=False`，不装作满足。
+PINNED_MODEL: Optional[str] = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+MODEL_ROUTER_VERSION = "router-2.1-pinned-single-model"
 
 
 class LLMUnavailable(RuntimeError):
@@ -173,17 +179,26 @@ class ModelRouter:
         self._repairing: bool = False           # 自愈重试只做一次，防止递归
         self.quota_exhausted: bool = False      # 免费额度熔断
         self.quota_reason: str = ""
+        self.reasoning_effort: Optional[str] = "low"   # 压思考预算；不支持时自动置 None
 
     # ---- 路由 ----
+    @property
+    def single_model(self) -> bool:
+        """当前是否固定单模型（§40 的「evaluator 独立」此时不成立，产物要如实标）。"""
+        return bool(PINNED_MODEL)
+
     def resolve(self, node: str) -> Dict[str, Any]:
         tier = NODE_TIERS.get(node, "medium")
         model = self.overrides.get(node) or TIER_MODELS.get(tier)
+        if PINNED_MODEL and tier != "none":      # 固定单模型：覆盖档位路由与节点级 override
+            model = PINNED_MODEL
         if not self.enabled or tier == "none":
             return {"node": node, "tier": tier, "model": None, "mode": "rule",
                     "reason": ("本节点规格上不用 LLM" if tier == "none"
                                else ("无 key / 未启用 → 规则兜底" if model else "无可用模型"))}
         return {"node": node, "tier": tier, "model": model, "mode": "llm",
-                "reason": "OpenRouter 免费模型"}
+                "reason": ("固定单模型（PINNED_MODEL）" if PINNED_MODEL
+                           else "OpenRouter 免费模型")}
 
     # ---- 底层单次调用 ----
     def chat(self, model: str, messages: List[Dict[str, str]],
@@ -196,6 +211,11 @@ class ModelRouter:
                    "temperature": temperature}
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+        # ★ 实测（2026-10-03，nemotron-3-ultra）：这是**重推理**模型，思考过程从同一个
+        #   max_tokens 预算里扣 —— creative 给了 4200，正文只剩 536 字符；relevance 写了
+        #   4828 字符思考后被截断。光调大 max_tokens 不够，还要压低思考强度。
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
         req = urllib.request.Request(
             OPENROUTER_URL, data=json.dumps(payload).encode("utf-8"), method="POST",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
@@ -208,6 +228,9 @@ class ModelRouter:
             body = e.read()[:200].decode("utf-8", "replace")
             if json_mode and ("response_format" in body or e.code == 400):
                 raise LLMUnavailable(f"JSON_MODE_UNSUPPORTED: {body[:120]}")
+            if self.reasoning_effort and ("reasoning" in body.lower() or e.code == 400):
+                # 该模型不支持 reasoning 参数 → 关掉重来一次，不要整个节点失败
+                raise LLMUnavailable(f"REASONING_UNSUPPORTED: {body[:120]}")
             raise LLMUnavailable(f"HTTP {e.code}: {body}")
         except Exception as e:
             raise LLMUnavailable(f"{type(e).__name__}: {e}")
@@ -236,7 +259,12 @@ class ModelRouter:
             raise LLMUnavailable(info.get("reason") or "未启用模型")
         msgs = ([{"role": "system", "content": system}] if system else []) + \
                [{"role": "user", "content": prompt}]
-        tried = [info["model"]] + [m for m in FALLBACKS.get(info["model"], [])]
+        # ★ 固定单模型时**不走备选链**：否则"全部用 X"是假的（X 一限流就悄悄换成别的模型，
+        #   产物里却看不出来）。此时失败就回退规则，并把原因写清楚。
+        if PINNED_MODEL:
+            tried = [info["model"]]
+        else:
+            tried = [info["model"]] + [m for m in FALLBACKS.get(info["model"], [])]
         last = ""
         for m in tried:
             for attempt in range(self.max_retries):
@@ -246,6 +274,9 @@ class ModelRouter:
                     last = str(e)
                     if "JSON_MODE_UNSUPPORTED" in str(e):
                         json_mode = False     # 该模型不支持强制 JSON → 后面改用提示词约束
+                        continue
+                    if "REASONING_UNSUPPORTED" in str(e):
+                        self.reasoning_effort = None   # 不支持就别再带这个参数
                         continue
                     if "空 content" in str(e):
                         break                 # 换模型，不重试同一模型

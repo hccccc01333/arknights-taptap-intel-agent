@@ -292,6 +292,134 @@ class TestQuotaCircuitBreaker(unittest.TestCase):
         self.assertEqual(len(r.last_errors), before)
 
 
+class TestBatchEvalPartialCoverageIsVisible(unittest.TestCase):
+    """★ 实测踩坑钉死：批量评审时模型只评了一部分（4 条只评 1 条），
+    漏评的**悄悄回退规则且不留痕**，`llm_errors` 是空的 —— 跟 soft_empty 同一类静默降级。"""
+
+    def _state(self):
+        pack = _pack()
+        st = {"event_id": "e1", "evidence_pack": pack,
+              "relevance": N_analysis.relevance(pack),
+              "audiences": N_analysis.audience(pack, {}),
+              "opportunities": [], "growth_hypotheses": [], "creatives": []}
+        st["opportunities"] = __import__(
+            "intelligence.nodes.opportunity", fromlist=["opportunity"]).opportunity(st)
+        st["creatives"] = N_creative.generate(st)
+        return st
+
+    def _dims(self):
+        return {"relevance": 0.8, "user_insight": 0.7, "timing": 0.6, "growth": 0.7,
+                "feasibility": 0.8, "novelty": 0.5, "distribution": 0.6}
+
+    def test_partial_coverage_recorded(self):
+        st = self._state()
+        creatives = st["creatives"]
+        self.assertGreaterEqual(len(creatives), 2, "前置：至少 2 条创意")
+        rule_evals = [N_eval.evaluate(c, st, peers=creatives) for c in creatives]
+        r = FakeRouter(reply={"evaluations": [
+            {"idea_id": creatives[0]["idea_id"], "dimensions": self._dims()}]})
+        out = AUG.augment_evaluation(rule_evals, creatives, st, r)
+        self.assertEqual(len(out), len(creatives))
+        self.assertTrue(any("partial_coverage" in e for e in r.last_errors),
+                        f"漏评必须留痕，实际={r.last_errors}")
+
+    def test_full_coverage_not_flagged(self):
+        st = self._state()
+        creatives = st["creatives"]
+        rule_evals = [N_eval.evaluate(c, st, peers=creatives) for c in creatives]
+        r = FakeRouter(reply={"evaluations": [
+            {"idea_id": c["idea_id"], "dimensions": self._dims()} for c in creatives]})
+        AUG.augment_evaluation(rule_evals, creatives, st, r)
+        self.assertFalse(any("partial_coverage" in e for e in r.last_errors),
+                         f"全覆盖不该报错，实际={r.last_errors}")
+
+
+class TestUnwrappedSingleObject(unittest.TestCase):
+    """实测：risk 节点模型返回**裸对象**（顶层是 type/level/description），
+    没套 `{"risks": [...]}` → 直接判空回退。这里宽容接受，但必须留痕。"""
+
+    def _state(self):
+        pack = _pack()
+        st = {"event_id": "e1", "evidence_pack": pack,
+              "relevance": N_analysis.relevance(pack),
+              "audiences": N_analysis.audience(pack, {}),
+              "opportunities": [], "growth_hypotheses": [], "creatives": []}
+        st["opportunities"] = __import__(
+            "intelligence.nodes.opportunity", fromlist=["opportunity"]).opportunity(st)
+        st["creatives"] = N_creative.generate(st)
+        return st
+
+    def test_bare_object_is_accepted_and_logged(self):
+        st = self._state()
+        rule_risk = N_eval.risk(st)
+        r = FakeRouter(reply={"type": "timing", "level": "high",
+                              "description": "窗口已过", "constraint": "改用模板化"})
+        out = AUG.augment_risk(rule_risk, st, r)
+        self.assertTrue(any(x.get("source") == "llm" for x in out["risks"]),
+                        f"裸对象应被采纳，实际={out['risks']}")
+        self.assertTrue(any("unwrapped_single" in e for e in r.last_errors),
+                        f"必须留痕，实际={r.last_errors}")
+
+    def test_unrelated_object_is_not_accepted(self):
+        """不相关的壳不能被当成条目 —— 宽容不等于什么都要。"""
+        st = self._state()
+        rule_risk = N_eval.risk(st)
+        r = FakeRouter(reply={"something": "else"})
+        out = AUG.augment_risk(rule_risk, st, r)
+        self.assertEqual(out["risks"], rule_risk["risks"])
+
+
+class TestPinnedSingleModel(unittest.TestCase):
+    """2026-10-03 用户要求：全部节点固定 `nvidia/nemotron-3-ultra-550b-a55b:free`。
+
+    钉死两件事：① 所有用 LLM 的节点都解析到同一个模型；
+    ② **不走备选链** —— 否则"全部用 X"是假的（X 一限流就悄悄换模型，产物里看不出来）。
+    """
+
+    PINNED = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+    def test_pinned_constant_is_set(self):
+        self.assertEqual(L.PINNED_MODEL, self.PINNED)
+
+    def test_every_llm_node_resolves_to_pinned(self):
+        r = L.ModelRouter(enabled=False)
+        r.enabled = True
+        seen = {}
+        for node, tier in L.NODE_TIERS.items():
+            if tier == "none":
+                continue
+            seen[node] = r.resolve(node)["model"]
+        self.assertTrue(seen, "前置：至少要有一个用 LLM 的节点")
+        self.assertEqual(set(seen.values()), {self.PINNED}, f"实际={seen}")
+
+    def test_no_fallback_when_pinned(self):
+        """固定单模型时，tried 只含主模型。"""
+        self.assertTrue(L.PINNED_MODEL)
+        r = L.ModelRouter(enabled=False)
+        r.enabled = True
+        model = r.resolve("creative")["model"]
+        self.assertEqual(L.FALLBACKS.get(model, []) and L.PINNED_MODEL, L.PINNED_MODEL)
+        self.assertTrue(r.single_model)
+
+    def test_evidence_stays_rule(self):
+        r = L.ModelRouter(enabled=False)
+        r.enabled = True
+        self.assertEqual(r.resolve("evidence")["mode"], "rule")
+
+    def test_pinning_is_reversible(self):
+        """把常量置回 None 就应恢复按档位路由（含 evaluator 独立档位）。"""
+        original = L.PINNED_MODEL
+        L.PINNED_MODEL = None
+        try:
+            r = L.ModelRouter(enabled=False)
+            r.enabled = True
+            self.assertFalse(r.single_model)
+            self.assertNotEqual(r.resolve("creative")["model"],
+                                r.resolve("evaluator")["model"])
+        finally:
+            L.PINNED_MODEL = original
+
+
 class TestNullObjectDoesNotCrash(unittest.TestCase):
     """★ 实测踩坑钉死：`_items()` 恒返回 list（obj=None → []），所以
     `if not isinstance(items, list)` 是**死守卫**，压根拦不住解析失败；
