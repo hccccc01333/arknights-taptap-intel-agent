@@ -4,7 +4,7 @@
     Intelligence Feed / Trend Workspace / Opportunity & Creative /
     Execution & Experiment / Learning Dashboard
 
-双击即开（与 L6_delivery/dashboard 同款离线纪律：单文件、零 CDN、数据 JSON 内嵌）。
+双击即开（离线纪律：单文件、零 CDN、数据 JSON 内嵌；与项目原有离线看板同款）。
 **只读镜像**：所有写操作走 CLI（权限矩阵在写路径强制，静态页面不掌权限）——
 页面顶部如实标明。
 """

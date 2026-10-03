@@ -133,3 +133,6 @@ data/state/l4_intelligence.sqlite3
 
 # L6 离线工作台：--workbench 生成物，内嵌运行时数据快照，不入 git
 L6_execution/workbench/
+
+# runtime 运行时状态（调度/轨迹/checkpoint，不入 git）
+runtime/state/

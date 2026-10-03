@@ -223,8 +223,6 @@ L3_trend/
 │   ├── feedback.py      闭环调频 + 第四层触发门（§40/§41/§46/§47）
 │   ├── evaluation.py    时间分辨率体检 + 检测延迟 + 聚类/检测评估（§4/§38/§39）
 │   └── pipeline.py      ★ 入口（--run / --eval / --top / --show / --stats）
-├── topic_tracker.py     既有：跨天话题状态（迁自原 L4_decision）
-├── ferment_judge.py     既有：可发酵度判断
-├── events.py freshness.py anomaly_lite.py intel_stats.py
+├── intel_stats.py       统计底座（两比例 z 检验 / Wilson CI；L6 实验引擎复用）
 └── tests/
 ```

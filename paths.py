@@ -30,9 +30,7 @@ L2 = ROOT / "L2_signal"
 L3 = ROOT / "L3_semantic"
 L3_TREND = ROOT / "L3_trend"
 L4 = ROOT / "L4_intelligence"
-L5 = ROOT / "L5_generation"
 L5_MEMORY = ROOT / "L5_memory"          # 设计口径的第五层：知识与增长记忆
-L6 = ROOT / "L6_delivery"
 L6_EXECUTION = ROOT / "L6_execution"    # 设计口径的第六层：应用、决策与增长执行
 RUNTIME = ROOT / "runtime"
 COMMON = ROOT / "common"
@@ -44,9 +42,7 @@ LAYERS: Dict[str, Path] = {
     "L3": L3, "L3_semantic": L3,
     "L3": L3_TREND, "L3_trend": L3_TREND,
     "L4": L4, "L4_intelligence": L4,
-    "L5": L5, "L5_generation": L5,
     "L5_memory": L5_MEMORY,
-    "L6": L6, "L6_delivery": L6,
     "L6_execution": L6_EXECUTION,
     "runtime": RUNTIME,
     "common": COMMON,
@@ -77,7 +73,7 @@ def ensure_on_path() -> None:
 def load_module(name: str, layer: Optional[str] = None, search: Optional[list] = None) -> ModuleType:
     """按名字从指定层加载模块（跨层 import 的唯一正确姿势）。
 
-    load_module("risk_insight", layer="L5_generation")
+    load_module("game_profile", layer="games")
     load_module("harness", layer="runtime")
     """
     ensure_on_path()

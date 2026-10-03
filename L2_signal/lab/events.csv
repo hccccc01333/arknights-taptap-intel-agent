@@ -1,6 +1,0 @@
-event_id,event_date,event_type,title,anchor_source,assumption,expected_signals,analyzable
-E20260501,2026-05-01,version,五一前后版本/周年内容声量峰,annotation_spike,库内 2026-05-01 日声量峰值 n=137（全年 Top1）；窗口内「周年」「更新」词频抬升。非官方日历对齐，日期取声量峰日。,volume↑; gacha/ops 讨论↑; neg 未必同步升,yes
-E20260601,2026-06-01,gacha,怪猎联动相关抽卡讨论峰,annotation_spike+theme,2026-06-01 声量 n=79；近窗「怪猎/怪物猎人/联动」提及集中，gacha 主题占比抬升。推断为联动卡池/讨论高峰日（非官宣日期）。,gacha volume↑; churn 词可能↑,yes
-E20260615,2026-06-15,event,「足球」小游戏活动负向反噬,annotation_spike+theme,2026-06-15~21 event 主题与「足球/踢足球」词频集中；窗内负向约 60%。玩家原话指向足球活动体验差。日期取反噬起峰日。,event topic↑; neg_rate↑; gameplay↑,yes
-E20260710,2026-07-10,version,7月中旬内容/皮肤相关声量抬升,annotation_spike+theme,2026-07-10 日声量 n=26（近 60 日次峰）；gameplay 主导，夹杂「初雪皮肤」「判定修改」等讨论。推断为中旬内容/皮肤投放或平衡沟通节点。靠近数据尾部可分析。,gameplay volume↑; balance/ops 线索,yes
-E20260717,2026-07-17,hotfix,客户端更新后基建闪退相关异动,annotation_spike+theme,2026-07-17 起负向抬升，7/18 有「更新完开基建会闪退」等原话；client 主题与闪退/崩溃词零星抬升。推断为小版本/热更后客户端体验异动（非官方 hotfix 编号）。窗后侧受 day_max=2026-07-20 截断，可能降级为 ±3d。,client↑; crash keyword↑; neg_rate↑,yes

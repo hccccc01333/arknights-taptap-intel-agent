@@ -171,9 +171,5 @@ L2_signal/
 │   ├── features.py          百分位 / 速度 / ContentFeatures
 │   ├── storage.py           Processed Store + Processing State + 质量指标
 │   └── pipeline.py          ★ 入口（处理链 + replay + CLI）
-├── features.py              既有：平台特征计算
-├── preprocess_reviews.py    既有：评论清洗切片
-├── cross_channel/           既有：跨渠道 facts
-├── lab/                     既有：分析实验室
-└── tests/
+└── tests/                   （processing 子系统测试待补——旧 features 测试随旧模块移除）
 ```
