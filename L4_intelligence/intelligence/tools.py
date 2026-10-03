@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from typing import Any, Callable, Dict, List, Optional
@@ -169,6 +170,29 @@ def _get_game_profile(entity: str) -> Dict[str, Any]:
     return {"entity": entity, "note": "实体知识库未命中，返回实体本身", "aliases": [entity]}
 
 
+def _get_ops_context() -> Dict[str, Any]:
+    """§39/§40 Operational Context：第六层显式化的组织约束（研发/设计/资源位/预算）。
+
+    独立读 data/state/ops_context.json（第六层是写入方，本工具只读）——
+    Agent 不该在真空里做增长策略：无研发资源时就不该推荐"大型互动产品"。
+    文件缺失/过期由第六层写入方的 TTL 机制兜底，这里只如实返回读到的内容。
+    """
+    path = os.path.join(_ROOT, "data", "state", "ops_context.json")
+    if not os.path.exists(path):
+        return {"available": False,
+                "note": "运营约束未配置（§39：配置后 Creative 会按真实资源设计）"}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return {"available": True, "resources": data.get("resources") or {},
+                "slots_24h": data.get("slots_24h") or {},
+                "budget_level": data.get("budget_level"),
+                "channels_allowed": data.get("channels_allowed") or [],
+                "valid_until": data.get("valid_until")}
+    except (ValueError, OSError) as e:
+        return {"available": False, "note": f"约束文件损坏：{e}"}
+
+
 def build_tools(upstream: Any) -> Dict[str, Tool]:
     tools = [
         Tool("search_event_content", "查询 Event 内的原始内容（返回结构化结论，不返回全文）",
@@ -197,6 +221,11 @@ def build_tools(upstream: Any) -> Dict[str, Tool]:
              lambda **kw: _search_similar_cases(**kw),
              {"sources": [], "granularity": "none", "via_llm": False,
               "returns": ["case_id", "strategy", "lessons"]}),
+        # granularity=none：读的是结构化运营约束，不是文本（§39/§40 第六层 → 第四层闭环）
+        Tool("get_ops_context", "当前组织约束（研发/设计/资源位/预算，§39）",
+             lambda: _get_ops_context(),
+             {"sources": [], "granularity": "none", "via_llm": False,
+              "returns": ["available", "resources", "slots_24h"]}),
         Tool("search_web", "外部检索",
              lambda **kw: (_ for _ in ()).throw(ToolUnavailable("本机无外网检索凭据")),
              {"sources": ["web"], "granularity": "full", "via_llm": True,

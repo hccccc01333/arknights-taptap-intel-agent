@@ -130,3 +130,6 @@ data/state/l2_embeddings.sqlite3
 data/state/l3_trend.sqlite3
 l3_run_out.json
 data/state/l4_intelligence.sqlite3
+
+# L6 离线工作台：--workbench 生成物，内嵌运行时数据快照，不入 git
+L6_execution/workbench/

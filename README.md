@@ -17,7 +17,7 @@
 | 标注 | v1.4 两段式：字面 / 意图 / 主情绪 / 修辞分通道 |
 | 游戏档案 | [`games/<key>.json`](./games/README.md) 驱动 app_id / 阈值 / 等价名 / 跨渠关键词——换档案即换游戏 |
 | Skills | [`skills/`](./skills/README.md)：5 个 Agent Skills |
-| 架构 | **分层目录（2026-10-01 重排）**：L1 采集 → L2 信号 → L3 语义 → L4 决策 → L5 生成 → L6 交付；控制面 `runtime/`、数据湖 `data/`。详见 [分层结构](#分层结构) |
+| 架构 | **六层 Growth Intelligence OS（2026-10 重构定稿）**：L1 采集 → L2 加工 → L3 语义/趋势 → L4 情报 → L5 记忆 → L6 执行；控制面 `runtime/`、数据湖 `data/`。六个动词：**Capture → Understand → Detect → Reason → Learn → Act**。详见 [分层结构](#分层结构) |
 | 判据 | 热点是否值得社区做话题，用「**社区可发酵度**」判断（`ferment_judge`），不是「是否属于我建档的游戏」——实测旧判据命中 0/10，新判据认为 5/10 可发酵 |
 
 > 社交三渠为限量对照；降级语料会在 facts / 看板标明，不作全网 KPI。
@@ -39,6 +39,7 @@
 | **L3** | `L3_trend/` | ★ **趋势智能**（Data Science Core）：事件聚类、速度/加速度/爆发、Hot/Momentum/Confidence、生命周期、闭环调频 | ➖ 规则 + 统计 |
 | **L4** | `L4_intelligence/` | ★ **AI 情报与增长推理**（Agent Intelligence）：Evidence 事实层级、Trend Analyst、TapTap Relevance、Audience/Motivation、Opportunity、Growth Hypothesis、Creative、Evaluator+Risk、人工闸门（LangGraph 编排） | ➖ 规则兜底（无 key） |
 | **L5 记忆** | `L5_memory/` | ★ **知识与增长记忆**：6 类 Memory（业务/实体/趋势/创意/实验/决策）、混合检索、Growth Case 蒸馏、Anti-pattern、Playbook（人工审批）、写入策略与 PII 治理 | ➖ 治理管道，LLM 可选 |
+| **L6 执行** | `L6_execution/` | ★ **应用、决策与增长执行**（Decision & Action Interface）：Intelligence Feed（ActionPriority+窗口约束）、三工作区、决策状态机+Time-to-Action、素材版本化、Execution Plan（Level 2）、实验引擎（护栏+五态结果）、告警、lineage+漏斗+价值看板、RBAC+审计 | ➖ 人工闸门强制 |
 | **L5 生成** | `L5_generation/` | 生成：素材库、创意、洞察 | ✅ |
 | **L6** | `L6_delivery/` | 交付：简报 / 日报周报 / 看板 / 渠道对照 | ➖ 渲染 |
 | 控制面 | `runtime/` | harness / 任务契约 / LangGraph 图 / 调度 | ➖ |
@@ -187,6 +188,8 @@ L3_trend/     每日情报 Agent（风险分层 + 决策路由 + 话题追踪 + 
                    └ state/  话题状态库（运行时，不入 git）
 L5_memory/        知识与增长记忆（6 类 Memory + 混合检索 + Case 蒸馏 + 治理）
                    └ data/state/l5_memory.sqlite3（运行时库）
+L6_execution/     应用决策执行（Feed/工作流/素材/实验/告警/漏斗 + RBAC 审计）
+                   └ workbench/index.html（离线工作台，--workbench 生成）
 games/           游戏档案（参数化入口：换档案即换游戏）
 skills/          Agent Skills（唯一 Skill 源目录）
 docs/            方法论与构建说明
@@ -252,10 +255,20 @@ python scripts/sync_agent_skills.py
       search_experiments / get_game_profile / search_similar_cases 走真记忆）
       设计见 `docs/知识增长记忆层设计.md`；实测：L3 事件无一生命周期闭合 → 长期 Trend 0 条（如实），
       进行中 211 条进短期记忆
+- [x] **应用决策执行层（L6_execution）**（Intelligence Feed + 三工作区 + 决策状态机 +
+      Time-to-Action + 素材版本化 + Execution Plan **Level 2** + 实验引擎（护栏/五态结果）+
+      告警 + lineage/漏斗/价值看板 + RBAC/审计；决策回写 L5/L4；ops_context 回灌 L4）
+      设计见 `docs/应用决策执行层设计.md`；§47 三个闭环的数据面已全部接通
+- [ ] L6 通知渠道出网（飞书/Slack/企微——告警目前落库不出网）与真实发布渠道接入
+      （素材止于"已发布"状态记录，执行是台账级）
+- [ ] L6 §31 归因落地（A/B / Holdout / DiD / Matching）→ 价值看板 Incremental 指标
+      （当前如实 None）
 - [ ] **Agent 框架落地**（LangGraph 4 图 / 32 节点 / 7 条件边 / 2 环 / 3 中断点，按 P1→P2→P3 分期）
       设计见 `docs/Agent框架落地设计.md`；框架层回归测试已就位（9 用例）
 - [ ] **交付层（当前最大的洞）**：产出是本地 `reports/*.md`，无推送 / 看板 / 权限 ——
       **员工目前看不到任何东西**。12 个员工功能里 3 个「文件已生成」、6 个「设计完未写码」、3 个未动工
+      （2026-10-03 更新：L6_execution 已补上决策/执行/实验工作流 + 离线工作台 + RBAC/审计；
+      剩余缺口收敛为通知出网与真实发布渠道，见上）
 - [ ] 话题追踪阈值校准（当前 1.5×/3.0×/0.6× 为默认值，未经运营反馈校准）  
 - [x] 采样调度器（探测 15min + 深采自适应），把「每天一跑」升级为全天监测  
 - [ ] **情报素材层**（4 类：原帖引用 / 热评金句 / 梗 / 二创角度）

@@ -137,6 +137,7 @@ L4_intelligence/
 │   ├── retrieval.py     ★ 第五层记忆检索适配（§37/§38 已接通：similar_trends/experiments、
 │   │                     product_capabilities、failure_cases、entity_profile、context_for；
 │   │                     L5 库缺失时 available()=False 返回空，不编造）
+│   │                     另：tools 注册 get_ops_context（第六层运营约束回灌，§39/§40）
 │   ├── nodes/
 │   │   ├── evidence.py      Evidence Builder + 事实层级（§8/§9）
 │   │   ├── analysis.py      Trend Analyst / Relevance / Audience（§10-§19）

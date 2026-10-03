@@ -33,6 +33,7 @@ L4 = ROOT / "L4_intelligence"
 L5 = ROOT / "L5_generation"
 L5_MEMORY = ROOT / "L5_memory"          # 设计口径的第五层：知识与增长记忆
 L6 = ROOT / "L6_delivery"
+L6_EXECUTION = ROOT / "L6_execution"    # 设计口径的第六层：应用、决策与增长执行
 RUNTIME = ROOT / "runtime"
 COMMON = ROOT / "common"
 GAMES = ROOT / "games"
@@ -46,6 +47,7 @@ LAYERS: Dict[str, Path] = {
     "L5": L5, "L5_generation": L5,
     "L5_memory": L5_MEMORY,
     "L6": L6, "L6_delivery": L6,
+    "L6_execution": L6_EXECUTION,
     "runtime": RUNTIME,
     "common": COMMON,
     "games": GAMES,
