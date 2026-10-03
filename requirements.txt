@@ -8,3 +8,9 @@ matplotlib>=3.8
 # ★ 可选依赖：没装时 L4 走纯标准库执行器 run_stdlib，两者共用 graph/routing.py 同一批判定，
 #   产物标 engine=stdlib_fallback —— 不假装跑过图。装上后 engine=langgraph。
 langgraph>=1.2
+
+# —— Web 应用（webapp/，可选：跑 uvicorn webapp.main:app 才需要）——
+# 2026-10-03 起步的设计 §45 真应用骨架；业务全部复用 L4/L5/L6 模块
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27            # fastapi TestClient 依赖

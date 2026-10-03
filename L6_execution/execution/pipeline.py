@@ -97,6 +97,8 @@ class App:
             self.l4.conn.close()
         if self.memory:
             self.memory.close()
+        if self.up:                        # ★ Upstream 的 L3 连接也要关（Windows 文件锁实测）
+            self.up.close()
 
 
 def _creative_from_l4(app: App, idea_id: str) -> Dict[str, Any]:
