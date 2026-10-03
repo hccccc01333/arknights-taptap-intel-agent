@@ -16,22 +16,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run unit tests (stdlib only)
-        run: python -m unittest discover -s 11情报Agent/tests -v
-
-      - name: Rebuild intel reports
+      # 六层主链测试（stdlib only；langgraph 相关用例未装时自动跳过）
+      - name: Run unit tests (per layer, stdlib only)
         run: |
-          python 11情报Agent/risk_insight.py
-          python 11情报Agent/anomaly_lite.py
-          python 11情报Agent/daily_agent.py
-
-      - name: Brief hygiene — no stack traces in public reports
-        run: |
-          ! grep -rE "Traceback|ModuleNotFoundError" 11情报Agent/reports/
-
-      - name: Data hygiene — no PII fields in tracked JSON outputs
-        run: |
-          ! grep -rlE "user_name|avatar_url|device_raw|user_id" 11情报Agent/outputs/ 05展示页/dashboard_data.json
+          python -m unittest discover -s L3_semantic/tests -p "test_*.py"
+          python -m unittest discover -s L3_trend/tests -p "test_*.py"
+          python -m unittest discover -s L4_intelligence/tests -p "test_*.py"
+          python -m unittest discover -s L5_memory/tests -p "test_*.py"
+          python -m unittest discover -s L6_execution/tests -p "test_*.py"
+          python -m unittest discover -s runtime/tests -p "test_*.py"
+          python -m unittest discover -s games/tests -p "test_*.py"
 
       # 2026-09-29 事故复盘后新增：原始域 CSV 曾因 .gitignore 规则与实际目录名
       # 不匹配（02数据_*/ vs 02数据/）而被推送到公开仓库。扫描升级为
