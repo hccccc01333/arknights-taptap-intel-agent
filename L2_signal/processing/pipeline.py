@@ -140,6 +140,7 @@ class ProcessingPipeline:
             metrics=common_metrics, platform_metrics=platform_metrics,
             topics=normalize_tags(ev.get("tags") or ev.get("topics")),
             raw_ref=ev.get("raw_ref", ""),
+            parent_id=ev.get("parent_id"),
             processor_versions=dict(PROCESSOR_VERSIONS),
         )
         # 游戏提示（第一层给的话题/游戏字段）作为实体弱证据

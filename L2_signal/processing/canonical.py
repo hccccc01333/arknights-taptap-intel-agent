@@ -60,6 +60,7 @@ class CanonicalContent:
     source_id: str = ""
     external_id: str = ""
     content_type: str = "post"
+    parent_id: str = ""
 
     # ★ 两版文本：原文永存，清洗版用于计算
     raw_title: Optional[str] = None

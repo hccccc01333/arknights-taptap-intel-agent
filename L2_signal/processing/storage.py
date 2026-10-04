@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS content (
     processing_version  TEXT,
     processor_versions  TEXT,
     state               TEXT,
+    parent_id           TEXT,
     created_at          TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_content_platform ON content(platform);
