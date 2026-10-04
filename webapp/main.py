@@ -129,6 +129,13 @@ def get_alerts(user: Dict[str, Any] = Depends(current_user)):
     return S.alerts_pending()
 
 
+@app.get("/api/universe")
+def get_universe(limit: int = 240, user: Dict[str, Any] = Depends(current_user)):
+    """Universe 数据（设计 §C：映射规则的唯一真源在 webapp/universe.py）。"""
+    import webapp.universe as U
+    return U.build_universe(limit=limit)
+
+
 @app.get("/api/funnel")
 def get_funnel(user: Dict[str, Any] = Depends(current_user)):
     return S.funnel()

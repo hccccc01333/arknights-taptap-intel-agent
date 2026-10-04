@@ -79,14 +79,63 @@ def make_title(members: List[Dict[str, Any]], entities: List[str]) -> Tuple[str,
                 kw = v
                 break
 
+    # ★ 修 bug（2026-10-04，两个问题一起修）：
+    #   ① 实体标签不能直接当事件名（旧库 21 个叫「genre 二次元 联动」「developer 网易 上线」）
+    #   ② 但也不能只剩游戏名（那样 27 个事件全叫「arknights」，卡片无法区分）
+    #   → 游戏名 + 事件动词 + **内容判别词**（成员文本里的高频特征片段）
     main = top_topic
-    if not main and entities:
-        main = entities[0].replace("game_", "").replace("_", " ")
+    if not main:
+        game_tags = [e for e in entities if e.startswith("game_")]
+        if game_tags:
+            main = game_tags[0][len("game_"):].replace("_", " ")
     title = " ".join(x for x in (main, kw) if x).strip()
+
+    # 没有话题标签时，用成员正文里的高频 2-4 字片段做判别词（避免同名事件）
+    # ★ 但成员太少（<4）不猜：2 条内容凑不出"共同特征"，抽出来的多半是口水片段
+    if not top_topic and len(members) >= 4:
+        disc = _distinctive_phrase(texts, exclude=(main or "", kw))
+        if disc:
+            title = " ".join(x for x in (main, disc) if x).strip()
     if not title:
         cand = max(texts, key=lambda t: len(t or "")) if texts else ""
-        title = (cand or "")[:30].strip()
+        cand = re.sub(r"^(genre|developer|publisher|event|game)\s+\S+\s+", "", (cand or "").strip())
+        title = cand[:30].strip() or (entities[0] if entities else "")
     return title, "rule"
+
+
+def _distinctive_phrase(texts: List[str], exclude: Tuple[str, ...] = ()) -> str:
+    """从成员正文里取一个高频短语当事件判别词。
+
+    ★ 为什么需要它：事件命名只有「游戏名+动词」时，同一游戏同一时间的多个
+      聚类会得到**完全相同**的标题（实测 27 个「arknights」、15 个「arknights 上线」），
+      卡片列表无法区分。取成员文本里反复出现、又不在游戏名里的 2-4 字片段即可区分。
+    """
+    skip = {w.lower() for w in exclude if w}
+    freq: Dict[str, int] = {}
+    for t in texts:
+        s = t or ""
+        # 抽取 2-4 字的中文片段
+        for n in (3, 4, 2):
+            for i in range(len(s) - n + 1):
+                frag = s[i:i + n]
+                if not re.search(r"[一-鿿]{%d}" % n, frag):
+                    continue
+                if frag.lower() in skip:
+                    continue
+                freq[frag] = freq.get(frag, 0) + 1
+    if not freq or not texts:
+        return ""
+    # ★ 阈值 = 过半成员。判别词必须能**定义这个事件**，而不是碰巧出现过的对话碎片。
+    #   实测松阈值（≥2 次）会抓出「买个」「可以」「我很喜欢」这种无意义的口水片段。
+    need = max(2, len(texts) * 0.5)
+    for frag, n in sorted(freq.items(), key=lambda kv: (-kv[1], -len(kv[0]))):
+        if n < need:
+            continue
+        if any(frag != longer and longer.startswith(frag)
+               and freq.get(longer, 0) == n for longer in freq):
+            continue
+        return frag
+    return ""
 
 
 class EventClusterer:

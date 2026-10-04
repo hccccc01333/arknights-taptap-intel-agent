@@ -1,0 +1,93 @@
+{
+  "739104": {
+    "name": "我的花园世界",
+    "file": "covers/app_739104.jpg",
+    "app_id": "739104",
+    "source": "https://img-tc.tapimg.com/market/images/e9a61869998a8d5b95b0668d65c28d6d.png/_tap_appicon.jpg",
+    "bytes": 151129
+  },
+  "223265": {
+    "name": "初音未来：缤纷舞台",
+    "file": "covers/app_223265.jpg",
+    "app_id": "223265",
+    "source": "https://img-tc.tapimg.com/market/images/41c9361d44a287edb8912587173ce02f.png/_tap_appicon.jpg",
+    "bytes": 158874
+  },
+  "147488": {
+    "name": "诸神皇冠",
+    "file": "covers/app_147488.jpg",
+    "app_id": "147488",
+    "source": "https://img-tc.tapimg.com/market/images/2a57f2fffe7795ef40c3670fed1e7b04.png/_tap_appicon.jpg",
+    "bytes": 144088
+  },
+  "165287": {
+    "name": "Phigros",
+    "file": "covers/app_165287.jpg",
+    "app_id": "165287",
+    "source": "https://img-tc.tapimg.com/market/images/cee54af27fc0de6e1fd5bf08e8982133.png/_tap_appicon.jpg",
+    "bytes": 168380
+  },
+  "710826": {
+    "name": "聚光灯游戏创作挑战",
+    "file": "covers/app_710826.jpg",
+    "app_id": "710826",
+    "source": "https://img-tc.tapimg.com/market/images/38b5794fd7293bd43c82b4f5f2e754aa.png/_tap_appicon.jpg",
+    "bytes": 10207
+  },
+  "168332": {
+    "name": "原神",
+    "file": "covers/app_168332.jpg",
+    "app_id": "168332",
+    "source": "https://img-tc.tapimg.com/market/images/3967c434aeaa96b7cc106740971ac4a3.jpg/_tap_banner.jpg",
+    "bytes": 138688
+  },
+  "224267": {
+    "name": "崩坏：星穹铁道",
+    "file": "covers/app_224267.jpg",
+    "app_id": "224267",
+    "source": "https://img-tc.tapimg.com/market/images/c65890aaa7ee6dc9d217e3038740affb.jpg/_tap_banner.jpg",
+    "bytes": 139071
+  },
+  "164230": {
+    "name": "模拟地铁",
+    "file": "covers/app_164230.jpg",
+    "app_id": "164230",
+    "source": "https://img-tc.tapimg.com/market/images/ef86a4bce6e6ad7329a4533a7fda9fa3.jpg/_tap_banner.jpg",
+    "bytes": 40313
+  },
+  "43744": {
+    "name": "坦克世界闪击战",
+    "file": "covers/app_43744.jpg",
+    "app_id": "43744",
+    "source": "https://img-tc.tapimg.com/market/images/386ec9b87b4329acc699aabb8846de70.jpg/_tap_banner.jpg",
+    "bytes": 126339
+  },
+  "216968": {
+    "name": "不存在的谎言",
+    "file": "covers/app_216968.jpg",
+    "app_id": "216968",
+    "source": "https://img-tc.tapimg.com/market/images/1f48aeef8c5a1b0eadc0b2283a7f19ac.jpg/_tap_banner.jpg",
+    "bytes": 113051
+  },
+  "193324": {
+    "name": "楼下的早餐店",
+    "file": "covers/app_193324.jpg",
+    "app_id": "193324",
+    "source": "https://img-tc.tapimg.com/market/images/8cb14eca4910abe28aecfe3cc1e4d72d.jpg/_tap_banner.jpg",
+    "bytes": 94630
+  },
+  "313622": {
+    "name": "冲呀！饼干人：王国",
+    "file": "covers/app_313622.jpg",
+    "app_id": "313622",
+    "source": "https://img-tc.tapimg.com/market/images/fdbfcec5d1c42e9709fbcdebbdfd923d.png/_tap_banner.jpg",
+    "bytes": 147302
+  },
+  "40337": {
+    "name": "石油大亨",
+    "file": "covers/app_40337.jpg",
+    "app_id": "40337",
+    "source": "https://img-tc.tapimg.com/market/images/1800184378270cb387c6605f0d7d7167.jpg/_tap_banner.jpg",
+    "bytes": 59863
+  }
+}

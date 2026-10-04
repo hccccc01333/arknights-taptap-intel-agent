@@ -47,6 +47,15 @@ from bus.event_bus import EventBus                       # noqa: E402
 from storage.metadata_db import MetadataStore            # noqa: E402  (L1)
 from storage.raw_lake import RawLake                     # noqa: E402  (L1)
 
+# L1 质量闸门：判据唯一真源在采集层，L2 只复用不重写（避免两套规则漂移）
+_L1_DIR = os.path.join(_ROOT, "L1_data_source")
+if _L1_DIR not in sys.path:
+    sys.path.insert(0, _L1_DIR)
+try:
+    from quality_gate import gate as _gate_fn                # type: ignore
+except Exception:                                             # pragma: no cover
+    _gate_fn = None
+
 from processing.canonical import (                        # noqa: E402
     CanonicalContent, content_id_of, PROCESSING_VERSION, text_fingerprint,
 )
@@ -82,6 +91,20 @@ class ProcessingPipeline:
         self.dedup = DedupEngine()
         self.baseline = MetricBaseline()
         self.l1_db = os.path.join(_ROOT, "data", "state", "l1_source_registry.sqlite3")
+
+    # ---------- 第二道质量闸门（设计决策：两层都做）----------
+    @staticmethod
+    def quality_gate(title, content, platform, source_type="post"):
+        """复用 L1 的闸门判据，不在这里重写一套（避免两套规则漂移）。
+
+        ★ 为什么不信任上游：实测 L2 直读 raw_lake（L1 采集管线产出），
+          与 events.jsonl（L1 normalize 产出）是**两条不同路径**。
+          只在 L1 拦会漏；两层各判一次，多几十毫秒，换"哪层跑过都干净"。
+        """
+        if _gate_fn is None:
+            return {"reject": False, "code": "ok"}
+        return _gate_fn(title=title, content=content, platform=platform,
+                        source_type=source_type)
 
     # ---------- 单条处理 ----------
     def process(self, ev: Dict[str, Any], collect_baseline_only: bool = False) -> Optional[Dict[str, Any]]:
@@ -249,9 +272,21 @@ class ProcessingPipeline:
         for ev in raw_events:
             self.process(ev, collect_baseline_only=True)
 
-        # pass 2：完整处理
+        # pass 2：完整处理（★ 第二道质量闸门）
         processed, failed = [], 0
+        gated, gated_reasons = 0, {}
         for ev in raw_events:
+            # 不信任上游：L2 直读 raw_lake（L1 采集管线产出），可能未经 events.jsonl 的闸门。
+            # 所以这里**再判一次** —— 双重闸门，代价是几十毫秒，收益是"哪层跑过都干净"。
+            g = self.quality_gate(title=ev.get("title") or ev.get("raw_title"),
+                                  content=ev.get("content") or ev.get("raw_text"),
+                                  platform=ev.get("platform", ""),
+                                  source_type=ev.get("source_type", "post"))
+            if g.get("reject"):
+                gated += 1
+                code = g.get("code", "unknown")
+                gated_reasons[code] = gated_reasons.get(code, 0) + 1
+                continue
             out = self.process(ev)
             if out is None:
                 failed += 1
@@ -272,7 +307,9 @@ class ProcessingPipeline:
         qm = {
             "entity_rate_gaming_only": round(gaming_with_ent / len(gaming_items), 4) if gaming_items else 0.0,
             "n_gaming_items": len(gaming_items),
-            "schema_valid_rate": round((total - failed) / total, 4) if total else 0.0,
+            "schema_valid_rate": round((total - failed - gated) / total, 4) if total else 0.0,
+            "gated": gated,
+            "gated_reasons": json.dumps(gated_reasons, ensure_ascii=False),
             "normalization_success_rate": 1.0,
             "duplicate_rate": round(dup / len(processed), 4) if processed else 0.0,
             "embedding_success_rate": 0.0 if not self.embedding_engine.available() else 1.0,

@@ -136,3 +136,10 @@ L6_execution/workbench/
 
 # runtime 运行时状态（调度/轨迹/checkpoint，不入 git）
 runtime/state/
+
+# 本地工具链（Node 便携版，供 spatial 前端构建用，不入库）
+.toolchain/
+spatial/node_modules/
+spatial/.next/
+spatial/dist/
+data/_archive/

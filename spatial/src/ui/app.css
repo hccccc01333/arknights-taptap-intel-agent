@@ -1,0 +1,243 @@
+/*
+ * TapTap 增长情报星图 —— DOM 浮层
+ * 锚点 Industrial：pitch black、等宽字、1px 硬线、0 圆角、0 阴影。
+ * 品牌色：TapTap 青绿 #00B8A7（信号）+ 橙 #FF6F38（要人行动）。
+ */
+
+:root{
+  --bg:#0B0C0A; --surface:#101210; --surface-hi:#161A16;
+  --line:#242A24; --line-hi:#38423A;
+  --tx:#E4E8E2; --tx2:#9AA39A; --tx3:#69716A;
+  --tap:#00B8A7; --tap-dim:#0A7A70; --tap-glow:rgba(0,184,167,.13);
+  --act:#FF6F38; --danger:#E0655B;
+  --mono:"IBM Plex Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%}
+body{background:var(--bg);color:var(--tx);overflow:hidden;
+  font:13px/1.55 var(--mono);font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font:inherit}
+.sub{font-size:11px;color:var(--tx3)}
+.caution{font-size:11px;color:var(--tx3);line-height:1.65}
+.hint{font-size:10.5px;color:var(--tap-dim);margin-top:6px}
+
+/* ---------------- 登录 ---------------- */
+.gate{position:fixed;inset:0;display:grid;place-items:center;
+  background:var(--bg)}
+.gate-card{width:380px;background:var(--surface);border:1px solid var(--line);
+  padding:0;animation:fade .3s}
+.gate-top{padding:20px 24px 16px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px}
+.gate-logo{height:20px;color:var(--tap)}
+.gate-title{font-size:15px;font-weight:600;letter-spacing:.02em}
+.gate-body{padding:20px 24px 24px;display:flex;flex-direction:column;gap:13px}
+.gate-body label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--tx3)}
+.gate-body input{background:var(--bg);border:1px solid var(--line);color:var(--tx);
+  padding:9px 11px;outline:none;font-size:13px}
+.gate-body input:focus{border-color:var(--tap)}
+.gate-err{color:var(--danger);font-size:11.5px;min-height:15px}
+.gate-foot{font-size:10.5px;color:var(--tx3);border-top:1px solid var(--line);
+  padding:11px 24px}
+.btn-go{background:var(--tap);color:#04211F;font-weight:700;padding:10px;
+  font-size:13px;letter-spacing:.02em;transition:.15s}
+.btn-go:hover{background:#14CFC0}
+.btn-go:disabled{opacity:.55;cursor:not-allowed}
+.loading{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--tx3)}
+.spinner{width:22px;height:22px;border:2px solid var(--line-hi);border-top-color:var(--tap);
+  animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* ---------------- 顶栏 ---------------- */
+.app{display:flex;flex-direction:column;height:100vh}
+.top{display:flex;align-items:center;gap:18px;padding:0 16px;height:48px;flex:none;
+  background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px}
+.brand img{height:16px;color:var(--tap)}
+.brand span{font-size:12px;color:var(--tx2);border-left:1px solid var(--line-hi);
+  padding-left:10px}
+.search{flex:1;max-width:460px}
+.search input{width:100%;background:var(--bg);border:1px solid var(--line);
+  color:var(--tx);padding:7px 11px;outline:none;font-size:12.5px}
+.search input:focus{border-color:var(--tap)}
+.top .right{display:flex;align-items:center;gap:12px}
+.running{font-size:11px;color:var(--act)}
+.kbd{font-size:10px;color:var(--tx3);border:1px solid var(--line);padding:2px 6px}
+.who{font-size:11.5px;color:var(--tx2);border:1px solid var(--line);padding:5px 10px}
+.who:hover{border-color:var(--tap);color:var(--tap)}
+
+/* ---------------- 舞台 ---------------- */
+.stage{position:relative;flex:1;min-height:0}
+.stage canvas{display:block}
+
+/* ---------------- 左栏 ---------------- */
+.rail{position:absolute;left:14px;top:14px;width:230px;z-index:4;
+  background:rgba(16,18,16,.94);border:1px solid var(--line);
+  max-height:calc(100% - 96px);overflow-y:auto}
+.rail section{padding:14px 15px;border-bottom:1px solid var(--line)}
+.rail section:last-child{border-bottom:none}
+.rail h4{font-size:10px;color:var(--tx3);letter-spacing:.12em;margin-bottom:9px;
+  text-transform:uppercase;font-weight:500}
+.frow{display:flex;justify-content:space-between;width:100%;padding:4px 7px;
+  font-size:12px;color:var(--tx2);border-left:2px solid transparent}
+.frow:hover{background:var(--surface-hi);color:var(--tx)}
+.frow.on{background:var(--tap-glow);color:var(--tap);border-left-color:var(--tap)}
+.frow em{font-style:normal;font-size:11px;color:var(--tx3)}
+.frow.on em{color:var(--tap)}
+.notes dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11px}
+.notes dt{color:var(--tx3)}
+.notes dd{color:var(--tx2)}
+.notes .fact{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);
+  font-size:11px;color:var(--tx2)}
+.notes .fact b{color:var(--tap);font-weight:600}
+.notes .caution{margin-top:7px}
+
+/* ---------------- 右栏 ---------------- */
+.side{position:absolute;right:14px;top:14px;width:340px;z-index:4;
+  background:rgba(16,18,16,.94);border:1px solid var(--line);
+  max-height:calc(100% - 96px);overflow-y:auto}
+.side section{padding:14px 16px;border-bottom:1px solid var(--line)}
+.side section:last-child{border-bottom:none}
+.side h3{font-size:10px;color:var(--tx3);letter-spacing:.12em;margin-bottom:10px;
+  text-transform:uppercase;font-weight:500}
+.back{font-size:11.5px;color:var(--tx3);padding:11px 16px 0;display:block}
+.back:hover{color:var(--tap)}
+.d-title{font-size:17px;font-weight:600;line-height:1.35;padding:8px 16px 0}
+.d-meta{font-size:11px;color:var(--tx3);padding:6px 16px 0}
+.tags{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px 0}
+.tagbox{font-size:10.5px;padding:2px 7px;border:1px solid var(--line-hi);color:var(--tx2)}
+.tagbox.L1{color:var(--tap);border-color:var(--tap)}
+.tagbox.L2{color:var(--tx2);border-style:dashed}
+.tagbox.L3{color:var(--tx3);border-style:dotted}
+
+table.list{width:100%;border-collapse:collapse;font-size:12px}
+table.list th{text-align:left;font-weight:400;font-size:10px;color:var(--tx3);
+  padding:4px 6px;border-bottom:1px solid var(--line);letter-spacing:.06em}
+table.list td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.list tbody tr{cursor:pointer}
+table.list tbody tr:hover{background:var(--tap-glow)}
+table.list .idx{color:var(--tx3);width:18px}
+table.list .tname{color:var(--tx)}
+.tag{font-size:9.5px;padding:0 4px;margin-left:5px;border:1px solid var(--line-hi);
+  color:var(--tx3)}
+.tag.L1{color:var(--tap);border-color:var(--tap)}
+.tag.L2{color:var(--tx2);border-style:dashed}
+
+table.metrics{width:100%;font-size:11.5px;border-collapse:collapse}
+table.metrics td{padding:3px 0}
+table.metrics td:first-child{width:44px;color:var(--tx3)}
+table.metrics td:last-child{width:34px;text-align:right;color:var(--tx)}
+table.metrics .bar{width:auto;padding:0 8px}
+table.metrics .bar i{display:block;height:5px;background:var(--tap)}
+
+.quote{border-left:2px solid var(--tap);padding:2px 0 2px 11px;font-size:13px;
+  line-height:1.7;color:var(--tx)}
+.quote-sub{margin-top:7px;font-size:11.5px;color:var(--tx3);line-height:1.7}
+.acts{display:flex;gap:8px;margin-top:12px}
+.btn-line{border:1px solid var(--line-hi);padding:9px 15px;font-size:12.5px;
+  color:var(--tx2)}
+.btn-line:hover{border-color:var(--tap);color:var(--tap)}
+.btn-line:disabled{opacity:.5;cursor:not-allowed}
+.evi p{font-size:12px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--tx2);
+  line-height:1.65}
+.evi p:last-child{border-bottom:none}
+.evi b{display:block;font-size:10px;color:var(--tx3);font-weight:400;margin-bottom:2px}
+.evi .unknown{color:var(--tx3)}
+.caution-box{background:var(--surface-hi)}
+
+/* ---------------- 底部：相关性引力轴刻度 ---------------- */
+.bottom{position:absolute;left:14px;right:14px;bottom:12px;z-index:4;
+  background:rgba(16,18,16,.94);border:1px solid var(--line);padding:11px 16px}
+.axis{position:relative;height:16px;border-bottom:1px solid var(--line-hi);
+  margin-bottom:8px}
+.axis span{position:absolute;bottom:3px;transform:translateX(-50%);
+  font-size:10px;color:var(--tx3);white-space:nowrap}
+.axis span:first-child{transform:translateX(0)}
+.axis span:last-child{transform:translateX(-100%)}
+
+/* ---------------- 悬停读数 ---------------- */
+.readout{position:absolute;z-index:6;pointer-events:none;
+  background:rgba(11,12,10,.96);border:1px solid var(--tap-dim);padding:10px 13px;
+  font-size:11.5px;min-width:210px;animation:fade .14s}
+.readout b{display:block;font-size:12.5px;margin-bottom:7px;color:var(--tx);
+  max-width:260px}
+.readout table{width:100%;border-collapse:collapse}
+.readout td{padding:1.5px 0}
+.readout td:first-child{color:var(--tx3);width:52px}
+.readout td:last-child{text-align:right}
+.readout em{font-style:normal;font-size:9.5px;color:var(--tap);margin-left:4px}
+
+/* ---------------- 提示 ---------------- */
+.toast{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);z-index:9;
+  background:var(--surface-hi);border:1px solid var(--tap-dim);padding:9px 16px;
+  font-size:12px;max-width:540px;animation:fade .2s}
+.toast.bad{border-color:var(--danger);color:#F0A49C}
+
+/* ---------------- 图例 ---------------- */
+.legend{position:absolute;left:258px;bottom:74px;z-index:4;display:flex;gap:16px;
+  background:rgba(16,18,16,.9);border:1px solid var(--line);padding:6px 11px;
+  font-size:10.5px;color:var(--tx3)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;display:inline-block}
+.lg-real{background:var(--tap)}
+.lg-proxy{background:transparent;border:1px solid var(--tap)}
+.lg-unknown{background:transparent;border:1px dotted var(--tx3)}
+.lg-idea{background:transparent;border:1px solid var(--act)}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+@media (max-width:1280px){
+  .rail{width:200px}
+  .side{width:300px}
+  .legend{display:none}
+}
+/* ---------------- 分类轨道（TapTap 首页胶囊标签） ---------------- */
+.cats{display:flex;gap:7px;padding:0 16px 9px;flex-wrap:wrap;flex:none;
+  border-bottom:1px solid var(--line);background:var(--surface)}
+.cat{font-size:11.5px;color:var(--tx2);border:1px solid var(--line);padding:4px 11px}
+.cat:hover{border-color:var(--tap);color:var(--tap)}
+.cat.on{background:var(--tap);border-color:var(--tap);color:#04211F}
+.cat em{font-style:normal;margin-left:6px;opacity:.65;font-size:10.5px}
+
+/* ---------------- 左栏导航 ---------------- */
+.rail .nav{padding:12px 0}
+.nav-h{font-size:10px;color:var(--tx3);letter-spacing:.12em;padding:0 15px 7px;
+  text-transform:uppercase}
+.nav-i{display:block;width:100%;text-align:left;font-size:12.5px;color:var(--tx2);
+  padding:5px 15px;border-left:2px solid transparent}
+.nav-i:hover{background:var(--surface-hi);color:var(--tx)}
+.nav-i.on{background:var(--tap-glow);color:var(--tap);border-left-color:var(--tap)}
+.rail .facts{padding:12px 15px;font-size:11px;color:var(--tx2);line-height:1.75}
+.rail .facts p{margin-bottom:4px}
+.rail .facts .dim{color:var(--tx3);margin-top:7px}
+
+/* ---------------- 详情封面 ---------------- */
+.detail-cover{width:100%;aspect-ratio:3/4;max-height:230px;overflow:hidden;
+  border-bottom:1px solid var(--line)}
+.detail-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.no-cover{width:100%;height:100%;background:var(--surface-hi);
+  display:grid;place-items:center;color:var(--tx3);font-size:11.5px}
+.ro-cover{width:100%;max-height:110px;object-fit:cover;margin:7px 0;
+  border:1px solid var(--line)}
+
+/* ---------------- 图例与提示条 ---------------- */
+.legend{position:absolute;left:252px;bottom:14px;z-index:4;display:flex;gap:15px;
+  background:rgba(11,12,10,.92);border:1px solid var(--line);padding:6px 11px;
+  font-size:10.5px;color:var(--tx3)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;display:inline-block}
+.lg-l1{background:var(--tap)}
+.lg-l2{background:transparent;border:1px solid var(--tap-dim)}
+.lg-l3{background:transparent;border:1px dotted var(--tx3)}
+.lg-idea{background:transparent;border:1px solid var(--act)}
+.hintbar{position:absolute;right:370px;bottom:16px;z-index:4;font-size:10.5px;
+  color:var(--tx3);background:rgba(11,12,10,.8);padding:5px 10px;border:1px solid var(--line)}
+
+.side-h{font-size:10px;color:var(--tx3);letter-spacing:.12em;margin-bottom:10px;
+  text-transform:uppercase}
+.steps p{font-size:12px;color:var(--tx2);margin-bottom:5px;line-height:1.7}
+table.list tbody tr td:nth-child(2){max-width:150px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
