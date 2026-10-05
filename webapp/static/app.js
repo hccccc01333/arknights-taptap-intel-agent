@@ -581,59 +581,6 @@ async function loadTrend() {
 }
 
 /* ============ 执行与实验 ============ */
-async function loadExec() {
-  const [plans, exps, funnel] = await Promise.all([
-    api("/plans"), api("/experiments"), api("/funnel").catch(() => null)]);
-  const act = (p, txt) => (CAN.act || {})[p];
-  $("exec-plans").innerHTML = plans.length ? plans.map((p) =>
-    `<div class="item"><div class="item-main">
-      <div class="item-title">${esc(p.creative_id)}</div>
-      <div class="item-sub">渠道：${esc((p.channels || []).join(" / "))}</div></div>
-      <div class="item-act"><span class="pill ${p.status === "live" ? "good" : "cool"}">
-        ${ZH.plan[p.status] || p.status}</span></div></div>`).join("")
-    : `<div class="empty">还没有活动上线。<br>在话题详情里审批一个方案就能排期。</div>`;
-  $("exec-exps").innerHTML = exps.length ? exps.map((e) => {
-    const r = e.result_state ? ZH.result[e.result_state] : "还没出结论";
-    const kind = e.result_state === "WIN" ? "good" : e.result_state === "LOSS" ? "hot"
-      : e.result_state ? "warn" : "cool";
-    return `<div class="item"><div class="item-main">
-      <div class="item-title">${esc(e.name)}</div>
-      <div class="item-sub">${esc(e.result_reason || ("目标指标：" + (e.primary_metric || "—")))}</div></div>
-      <span class="pill ${kind}">${ZH.exp[e.status] || e.status} · ${r}</span></div>`;
-  }).join("") : `<div class="empty">还没有实验数据。<br>上线活动时可以顺便开一个对照实验。</div>`;
-
-  const f = funnel || {};
-  const steps = [["原始信号", f.signals], ["发现话题", f.events], ["深度分析", f.analyzed_events],
-                 ["增长机会", f.opportunities], ["方案", f.creatives], ["人工采纳", f.adopted],
-                 ["真正上线", f.launched], ["实验有效", f.won]];
-  const mx = Math.max(...steps.map((s) => s[1] || 0), 1);
-  $("funnel").innerHTML = steps.map(([k, v], i) =>
-    `<div class="frow"><span class="fl">${k}</span>
-     <span class="ft"><i style="--w:${Math.max(2, (v || 0) / mx * 100)}%"></i></span>
-     <span class="fv">${num(v)}</span></div>`).join("");
-}
-
-/* ============ 团队记忆 ============ */
-async function loadMemory() {
-  const [val, tta] = await Promise.all([
-    api("/value").catch(() => null), api("/tta").catch(() => null)]);
-  const v = val || {};
-  const cards = [
-    { n: (v.funnel || {}).adopted, cap: "人工采纳过的方案", note: "被人真正点头的创意" },
-    { n: (v.funnel || {}).won, cap: "实验证明有效", note: "有对照组和数据的胜利" },
-    { n: tta ? (tta.n_action || 0) : null, cap: "走完上线流程", note: "从发现到上线的次数" },
-    { n: tta && tta.time_to_action_h != null ? tta.time_to_action_h + "h" : null,
-      cap: "平均决策耗时", note: "越短说明团队越快" },
-  ];
-  $("mem-cards").innerHTML = cards.map((c, i) =>
-    `<div class="mem" style="animation-delay:${i * 0.06}s">
-      <div class="num">${c.n == null ? "—" : c.n}</div>
-      <div class="cap">${c.cap}</div><div class="note">${c.note}</div></div>`).join("");
-  if (!$("mem-result").innerHTML.trim()) {
-    $("mem-result").innerHTML = `<div class="empty">搜一下以前的做法，
-      比如「联动」「排行榜」「投稿」。</div>`;
-  }
-}
 async function doMemorySearch() {
   const q = $("mem-q").value.trim();
   if (!q) return;
@@ -680,7 +627,7 @@ async function saveOps() {
 }
 
 /* ============ 路由与启动 ============ */
-const PAGES = { today: loadToday, creatives: loadCreatives, sources: loadSources, trend: loadTrend, exec: loadExec, memory: loadMemory };
+const PAGES = { today: loadToday, creatives: loadCreatives, sources: loadSources, trend: loadTrend };
 async function refreshAll() {
   try {
     for (const k of ["today", "exec"]) await PAGES[k]();
@@ -735,13 +682,13 @@ $("btn-me").onclick = () => $("setpanel").classList.toggle("hidden");
 $("setpanel").onclick = (e) => { if (e.target.id === "setpanel") $("setpanel").classList.add("hidden"); };
 $("set-save").onclick = saveOps;
 $("btn-logout").onclick = () => { sessionStorage.clear(); location.reload(); };
-$("btn-refresh-exec").onclick = () => loadExec().catch((e) => toast(e.message, "err"));
+$("btn-refresh-exec-unused").onclick = () => loadExec().catch((e) => toast(e.message, "err"));
 $("btn-refresh-today").onclick = () => loadToday(true).catch((e) => toast(e.message, "err"));
 $("btn-refresh-creatives").onclick = () => loadCreatives().catch((e) => toast(e.message, "err"));
 $("btn-refresh-sources").onclick = () => loadSources().catch((e) => toast(e.message, "err"));
 $("btn-save-cfg").onclick = () => saveCrawlConfig(false);
 $("btn-reset-cfg").onclick = () => saveCrawlConfig(true);
-$("btn-refresh-mem").onclick = () => loadMemory().catch((e) => toast(e.message, "err"));
+$("btn-refresh-mem-unused").onclick = () => loadMemory().catch((e) => toast(e.message, "err"));
 $("mem-go").onclick = doMemorySearch;
 $("mem-q").addEventListener("keydown", (e) => { if (e.key === "Enter") doMemorySearch(); });
 $("drawer").addEventListener("click", (e) => {

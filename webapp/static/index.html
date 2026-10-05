@@ -32,8 +32,6 @@
       <button class="tab" data-tab="creatives">增长创意</button>
       <button class="tab" data-tab="sources">数据源</button>
       <button class="tab" data-tab="trend">趋势分析</button>
-      <button class="tab" data-tab="exec">执行与实验</button>
-      <button class="tab" data-tab="memory">团队记忆</button>
     </nav>
     <div class="top-right">
       <span class="live" id="live-dot" title="实时同步"></span>
@@ -121,32 +119,7 @@
       <div class="panel"><h3>全部话题</h3><div id="trend-table" class="table-wrap"></div></div>
     </section>
 
-    <!-- 执行与实验 -->
-    <section class="page hidden" id="page-exec">
-      <div class="page-head"><div><h1>执行与实验</h1>
-        <p class="sub">已经上线的活动，以及它们到底有没有效果</p></div>
-        <button class="btn-ghost" id="btn-refresh-exec">刷新</button></div>
-      <div class="two-col">
-        <div class="panel"><h3>进行中的活动</h3><div id="exec-plans" class="list"></div></div>
-        <div class="panel"><h3>效果实验</h3><div id="exec-exps" class="list"></div></div>
-      </div>
-      <div class="panel"><h3>转化漏斗</h3><div id="funnel" class="funnel"></div></div>
-    </section>
-
-    <!-- 团队记忆 -->
-    <section class="page hidden" id="page-memory">
-      <div class="page-head"><div><h1>团队记忆</h1>
-        <p class="sub">过去做过什么、什么有效、什么踩过坑</p></div>
-        <button class="btn-ghost" id="btn-refresh-mem">刷新</button></div>
-      <div class="mem-cards" id="mem-cards"></div>
-      <div class="panel"><h3>检索历史经验</h3>
-        <div class="search-row">
-          <input id="mem-q" placeholder="试试：联动、UGC、排行榜…">
-          <button class="btn-primary" id="mem-go">查一查</button>
-        </div>
-        <div id="mem-result" class="list"></div></div>
-    </section>
-  </main>
+    </main>
 
   <!-- 事件详情抽屉 -->
   <div id="drawer" class="drawer">
