@@ -27,6 +27,21 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 
+# ★ 泛事件实体不进共现图：它们几乎每条内容都出现，
+#   会把不相干的游戏（战双/艾希/鸣潮）全拉进同一个"社群"。
+#   事件本身仍保留这些实体标注，只是不作为连边依据。
+GENERIC_EVENT_LABELS = {
+    "联动", "上线", "开服", "公测", "直播", "更新", "版本", "复刻",
+    "周年庆", "庆典", "测试", "内测", "活动", "公告", "卡池", "爆料",
+    "DLC", "dlc", "补偿", "福利", "抽卡",
+}
+
+
+def _is_generic_entity(e: str) -> bool:
+    if not e.startswith("event_"):
+        return False
+    return e.split("_", 1)[1] in GENERIC_EVENT_LABELS
+
 
 def build_entity_graph(contents: List[Dict[str, Any]]) -> nx.Graph:
     """从内容列表建实体共现图。
@@ -45,8 +60,9 @@ def build_entity_graph(contents: List[Dict[str, Any]]) -> nx.Graph:
                 ents = json.loads(ents)
             except (ValueError, TypeError):
                 ents = []
-        # 只用有区分力的实体
-        useful = [e for e in ents if len(e) > 4 and not e.startswith("platform_")]
+        # 只用有区分力的实体：排除平台前缀与泛事件词
+        useful = [e for e in ents
+                  if len(e) > 4 and not e.startswith("platform_") and not _is_generic_entity(e)]
         if len(useful) < 1:
             continue
         for e in useful:
@@ -95,7 +111,8 @@ def assign_contents_to_communities(
                 ents = json.loads(ents)
             except (ValueError, TypeError):
                 ents = []
-        useful = [e for e in ents if len(e) > 4 and not e.startswith("platform_")]
+        useful = [e for e in ents
+                  if len(e) > 4 and not e.startswith("platform_") and not _is_generic_entity(e)]
         scores: Dict[int, int] = defaultdict(int)
         for e in useful:
             if e in ent_to_comm:

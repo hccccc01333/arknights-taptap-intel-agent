@@ -112,6 +112,11 @@ CREATE TABLE IF NOT EXISTS event_merge_history (
     merged_at    TEXT,
     reason       TEXT
 );
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -152,6 +157,16 @@ class EventStore:
             "SELECT COUNT(DISTINCT parent_event_id) FROM trend_event WHERE parent_event_id IS NOT NULL"
         ).fetchone()[0]
         return {"children": n_child, "parents": n_parent}
+
+    # ---------- meta（跨轮派生结果：社区检测等）----------
+    def set_meta(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, str(value)))
+        self.conn.commit()
+
+    def get_meta(self, key: str) -> Optional[str]:
+        r = self.conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return r[0] if r else None
 
     # ---------- event ----------
     def upsert_event(self, e: Dict[str, Any]) -> None:

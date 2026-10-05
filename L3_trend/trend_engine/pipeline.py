@@ -125,6 +125,25 @@ class TrendEngine:
 
         scored.sort(key=lambda e: -(e.get("opportunity_score") or 0))
 
+        # —— 同代表内容去重：matcher 跨轮不幂等，重跑会给同一批内容建重复事件 ——
+        # 同一 representative_content_id 的 active 事件只留讨论量最大的一个，其余标 merged。
+        by_rep: Dict[str, List[Dict[str, Any]]] = {}
+        for ev in scored:
+            rid = ev.get("representative_content_id")
+            if rid:
+                by_rep.setdefault(rid, []).append(ev)
+        rep_dupes = 0
+        for rid, grp in by_rep.items():
+            if len(grp) > 1:
+                grp.sort(key=lambda e: (-(e.get("content_count") or 0), -(e.get("hot_score") or 0)))
+                keep = grp[0]
+                for dup in grp[1:]:
+                    self.store.record_merge(keep["event_id"], dup["event_id"], 1.0,
+                                            "同代表内容去重：重跑产生的完全重复事件")
+                    events = [e for e in events if e["event_id"] != dup["event_id"]]
+                    scored = [e for e in scored if e["event_id"] != dup["event_id"]]
+                    rep_dupes += 1
+
         # —— §42 父子事件（派生关系，每轮重算）——
         self.store.clear_parents()
         pc_links = resolve_parent_child(events)
@@ -143,6 +162,43 @@ class TrendEngine:
         evaluation = evaluate(events, member_index, sims_by_event)
 
         elapsed = (datetime.now() - started).total_seconds()
+
+        # —— 社区检测（GraphRAG 思路，2026-10-04 新增）——
+        # 聚类产出的事件仍是碎片（26 个都叫 arknights）。
+        # 社区检测把它们按实体共现聚成更大的讨论群，
+        # 下游（L4/L6）拿到的单位从"事件"升级为"社区"。
+        from trend_engine.community import (
+            build_entity_graph, detect_communities, community_report,
+        )
+        events_full = [dict(e) for e in self.store.list_events(limit=5000)
+                       if e.get("status") == "active"]
+        # 给每个事件带上实体列表
+        for ev in events_full:
+            ev["entities"] = json.loads(ev.get("entity_ids") or "[]")
+        G = build_entity_graph(events_full)
+        comms = detect_communities(G, min_size=2)
+        assigned = {}
+        ent_to_comm = {}
+        for ci, comm in enumerate(comms):
+            for ent in comm:
+                ent_to_comm[ent] = ci
+        for ev in events_full:
+            scores: Dict[int, int] = {}
+            for e in ev.get("entities") or []:
+                if e in ent_to_comm:
+                    scores[ent_to_comm[e]] = scores.get(ent_to_comm[e], 0) + 1
+            best = max(scores, key=scores.get) if scores else -1
+            assigned.setdefault(best, []).append(ev)
+        community_reports = []
+        for ci, ents in enumerate(comms):
+            items = assigned.get(ci, [])
+            if items:
+                community_reports.append(community_report(ci, ents, items))
+        # 存到库（供 L4/L6 消费）
+        self.store.set_meta("community_count", str(len(community_reports)))
+        self.store.set_meta("community_data", json.dumps(community_reports, ensure_ascii=False))
+        self.store.conn.commit()
+
         return {
             "engine_version": TREND_ENGINE_VERSION,
             "input_contents": len(rows), "candidates": len(kept),
@@ -154,6 +210,12 @@ class TrendEngine:
             "lifecycle_counts": self.store.lifecycle_counts(),
             "parent_child": {**pc_counts, "links": pc_links[:5]},
             "evaluation": evaluation,
+            "communities": {
+                "count": len(community_reports),
+                "unassigned": len(assigned.get(-1, [])),
+                "graph_nodes": G.number_of_nodes(),
+                "graph_edges": G.number_of_edges(),
+            },
             "elapsed_seconds": round(elapsed, 1),
             "top": [{"event_id": e["event_id"], "title": e.get("canonical_title"),
                      "lifecycle": e.get("lifecycle"), "hot": e.get("hot_score"),
