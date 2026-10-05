@@ -91,7 +91,6 @@ def opportunity(state: Dict[str, Any], max_opportunities: int = 4) -> List[Dict[
         mid = aud.get("motivation_id")
         mot = MOTIVATION_BY_ID.get(mid) or {}
         for t in (mot.get("best_types") or []):
-            ct = CREATIVE_TYPES.get(t) or {}
             for g in GROWTH_GOALS:
                 if g in ("ugc", "engagement", "reach", "share", "community_activation",
                          "game_detail_visit", "creator_activation", "reactivation"):
@@ -105,7 +104,6 @@ def opportunity(state: Dict[str, Any], max_opportunities: int = 4) -> List[Dict[
                         goals.append(g)
                     if t in ("h5", "social") and g == "share" and g not in goals:
                         goals.append(g)
-        del ct
     if not goals:
         goals = ["engagement", "ugc"]
 

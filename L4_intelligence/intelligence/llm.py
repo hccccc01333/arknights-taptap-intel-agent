@@ -27,6 +27,55 @@ from typing import Any, Dict, List, Optional
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELS_URL = "https://openrouter.ai/api/v1/models"
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+
+# ★ Provider（2026-10-04）：模型不再绑定供应商。
+#   同一个 DeepSeek 模型在 OpenRouter 上叫 "deepseek/deepseek-chat"，
+#   直连叫 "deepseek-chat"，base_url 和 key 来源都不同 —— 绑死一条路
+#   会让换模型 = 改代码。这里把 provider 抽出来，节点/档位只声明模型名。
+PROVIDERS: Dict[str, Dict[str, Any]] = {
+    "deepseek": {
+        "base_url": DEEPSEEK_URL,
+        "env_keys": ("DEEPSEEK_API_KEY", "LLM_API_KEY"),
+        "api_format": "openai",        # 与 OpenAI 兼容（tools/function calling 一致）
+    },
+    "openrouter": {
+        "base_url": OPENROUTER_URL,
+        "env_keys": ("FREE_API_KEY", "OPENROUTER_API_KEY"),
+        "api_format": "openai",
+    },
+}
+DEFAULT_PROVIDER = "deepseek"        # 2026-10-04 起默认直连 DeepSeek
+
+
+def resolve_provider(model: Optional[str]) -> Optional[Dict[str, Any]]:
+    """按模型名猜 provider。
+
+    · "deepseek-chat" / "deepseek-v4.1" → DeepSeek 直连
+    · "nvidia/xxx:free" / "openrouter/free" → OpenRouter（带 vendor 前缀）
+    · 认不出来的 → 默认 provider（调用方也可显式传 provider 覆盖）
+    """
+    if not model:
+        return None
+    if "/" in model:
+        return PROVIDERS.get(model.split("/", 1)[0], PROVIDERS["openrouter"])
+    low = model.lower()
+    if low.startswith("deepseek"):
+        return PROVIDERS["deepseek"]
+    return PROVIDERS[DEFAULT_PROVIDER]
+
+
+def provider_key(prov: Optional[Dict[str, Any]]) -> Optional[str]:
+    """取该 provider 的 API key（环境变量 → Windows 注册表）。"""
+    if not prov:
+        return None
+    for k in prov.get("env_keys") or ():
+        v = os.environ.get(k)
+        if v:
+            return v
+    if prov.get("base_url", "").startswith("https://openrouter.ai"):
+        return _registry_key()
+    return None
 
 # ---------------------------------------------------------------- §39 路由
 NODE_TIERS: Dict[str, str] = {
@@ -241,23 +290,38 @@ class ModelRouter:
     # ---- 底层单次调用 ----
     def chat(self, model: str, messages: List[Dict[str, str]],
              max_tokens: int = 1200, temperature: float = 0.4,
-             json_mode: bool = False) -> Dict[str, Any]:
-        key = get_api_key()
+             json_mode: bool = False,
+             tools: Optional[List[Dict[str, Any]]] = None,
+             provider: Optional[str] = None) -> Dict[str, Any]:
+        """调一次模型。provider/endpoint/key 由模型名推断，也可显式指定。
+
+        tools: OpenAI 风格的 function calling 定义（DeepSeek/OpenRouter 都吃这套），
+        返回里会带 tool_calls。
+        """
+        prov = PROVIDERS.get(provider) if provider else resolve_provider(model)
+        if prov is None:
+            raise LLMUnavailable(f"未知 provider（model={model}, provider={provider}）")
+        key = provider_key(prov)
         if not key:
-            raise LLMUnavailable("无 FREE_API_KEY")
+            raise LLMUnavailable(f"无 {provider or DEFAULT_PROVIDER} API key")
         payload = {"model": model, "messages": messages, "max_tokens": max_tokens,
                    "temperature": temperature}
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = payload.get("tool_choice", "auto")
         # ★ 实测（2026-10-03，nemotron-3-ultra）：这是**重推理**模型，思考过程从同一个
         #   max_tokens 预算里扣 —— creative 给了 4200，正文只剩 536 字符；relevance 写了
         #   4828 字符思考后被截断。光调大 max_tokens 不够，还要压低思考强度。
-        if self.reasoning_effort:
+        if self.reasoning_effort and prov.get("base_url", "").startswith("https://openrouter.ai"):
             payload["reasoning"] = {"effort": self.reasoning_effort}
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        if prov.get("base_url", "").startswith("https://openrouter.ai"):
+            headers.update({"HTTP-Referer": "http://localhost", "X-Title": "L4 Intelligence"})
         req = urllib.request.Request(
-            OPENROUTER_URL, data=json.dumps(payload).encode("utf-8"), method="POST",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                     "HTTP-Referer": "http://localhost", "X-Title": "L4 Intelligence"})
+            prov["base_url"], data=json.dumps(payload).encode("utf-8"), method="POST",
+            headers=headers)
         t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
@@ -274,11 +338,29 @@ class ModelRouter:
             raise LLMUnavailable(f"{type(e).__name__}: {e}")
         msg = (data.get("choices") or [{}])[0].get("message") or {}
         content = (msg.get("content") or "").strip()
-        if not content:
+        # ★ function calling：模型要调工具时 content 为空、tool_calls 有内容。
+        #   原来"空 content 就当模型不可用"的判断会把这种响应误杀 —— 必须先看 tool_calls。
+        tool_calls = []
+        for tc in (msg.get("tool_calls") or []):
+            fn = tc.get("function") or {}
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except ValueError:
+                args = {}
+            tool_calls.append({"id": tc.get("id"), "name": fn.get("name"), "arguments": args})
+        if not content and not tool_calls:
             # 部分 reasoning 模型只回 reasoning 不回 content → 视为该模型不可用，上层换模型
-            raise LLMUnavailable(f"模型 {model} 返回空 content（疑似只输出 reasoning）")
+            # 重推理模型偶尔把 max_tokens 全花在思考上、正文为空。
+            # 工具调用已经拿到的话照样能用；否则按"思考超预算"处理，换模型重来。
+            if tool_calls:
+                pass          # 有工具调用就继续（下面正常返回）
+            else:
+                raise LLMUnavailable(
+                    f"模型 {model} 返回空 content 且无 tool_calls"
+                    f"（疑似思考耗尽 max_tokens）")
         self.usage.add(model, data.get("usage") or {})
-        return {"content": content, "model": model,
+        return {"content": content, "tool_calls": tool_calls, "model": model,
+                "provider": provider or (prov and "openrouter" if prov["base_url"].startswith("https://openrouter.ai") else DEFAULT_PROVIDER),
                 "usage": data.get("usage") or {}, "seconds": round(time.time() - t0, 2)}
 
     def call(self, node: str, prompt: str, system: Optional[str] = None,
