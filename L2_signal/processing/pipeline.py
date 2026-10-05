@@ -232,6 +232,7 @@ class ProcessingPipeline:
         self.store.upsert_content({
             "content_id": c.content_id, "platform": c.platform, "source_id": c.source_id,
             "external_id": c.external_id, "content_type": c.content_type,
+            "parent_id": c.parent_id,
             "raw_title": c.raw_title, "raw_text": c.raw_text,
             "normalized_title": c.normalized_title, "normalized_text": c.normalized_text,
             "language": c.language, "published_at": c.published_at, "observed_at": c.observed_at,
