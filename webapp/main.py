@@ -28,6 +28,19 @@ from webapp.auth import issue_token, parse_token, verify_login
 
 app = FastAPI(title="Growth Intelligence OS", version=S.WEBAPP_VERSION)
 
+# Opt in to requests from a separately hosted frontend (for example Pages).
+# Local Vite proxy works without CORS; no origins are enabled by default.
+_FRONTEND_ORIGINS = [origin.strip() for origin in
+                     os.environ.get("WEBAPP_ALLOWED_ORIGINS", "").split(",")
+                     if origin.strip()]
+if _FRONTEND_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_FRONTEND_ORIGINS,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+
 # A separately hosted frontend (for example GitHub Pages) can opt into CORS.
 # Leave it disabled by default; the local Vite proxy works without CORS.
 _FRONTEND_ORIGINS = [origin.strip() for origin in
