@@ -25,6 +25,8 @@ if _L1 not in sys.path:
 from schema.content_event import RawContentEvent, to_iso, hash_author, now_cn  # noqa: E402
 from connectors.base import SourceConnector, FetchResult, ConnectorError, FailureType  # noqa: E402
 from adapters import taptap as tap_ad, bilibili as bili_ad, douyin as dy_ad, weibo as wb_ad  # noqa: E402
+from adapters import baidu_hot as bd_ad  # noqa: E402
+from adapters import weibo_hot as wb_hot_ad  # noqa: E402
 
 # dataset → (解析函数, content_type)
 PARSERS: Dict[Tuple[str, str], Tuple[Any, str]] = {
@@ -32,12 +34,15 @@ PARSERS: Dict[Tuple[str, str], Tuple[Any, str]] = {
     ("taptap", "comments"):      (tap_ad._comment, "comment"),
     ("taptap", "hashtags"):      (tap_ad._hashtag, "hashtag"),
     ("taptap", "reviews"):       (tap_ad._review,  "review"),
+    ("taptap", "group_map"):     (tap_ad._group_map, "group"),
     ("bilibili", "videos"):      (bili_ad._video,  "video"),
     ("bilibili", "comments"):    (bili_ad._comment, "comment"),
     ("douyin", "videos"):        (dy_ad._video,    "video"),
     ("douyin", "comments"):      (dy_ad._comment,  "comment"),
     ("weibo", "posts"):          (wb_ad._post,     "post"),
     ("weibo", "comments"):       (wb_ad._comment,  "comment"),
+    ("baidu_index", "hot_search"): (bd_ad._hot,     "rank"),
+    ("weibo", "hot_search"):      (wb_hot_ad._hot, "rank"),
 }
 
 

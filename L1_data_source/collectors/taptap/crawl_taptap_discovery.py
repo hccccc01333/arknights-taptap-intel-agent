@@ -40,7 +40,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "common"))  # pii_h
 from crawl_taptap_community import (  # noqa: E402
     BASE,
     CommunityCrawler,
+    _post_age_days,
+    append_snapshots,
     load_existing,
+    load_last_snapshots,
     load_xua,
     now_cn_iso,
     parse_comment,
@@ -63,6 +66,7 @@ POST_FIELDS = [
     "title", "summary",
     "comments", "supports", "ups", "pv_total", "publish_time",
     "hashtags_json", "hashtag_id", "hashtag_title", "source_type", "crawled_at",
+    "first_seen_at", "last_seen_at", "last_comments", "monitor_state",
 ]
 COMMENT_FIELDS = [
     "moment_id", "comment_id", "author_name", "content", "supports", "publish_time",
@@ -123,7 +127,9 @@ def parse_moment(
         "moment_id": str(mid),
         "group_id": group.get("id") or "",
         "app_id": app.get("id") or group.get("app_id") or "",
-        "app_title": (app.get("title") or group.get("title") or ""),
+        # ★ group.title 才是社区名；app.title 是应用侧当前状态，
+        #   已下架的游戏会返回「该游戏已下架」（实测王者荣耀 app_id=2301）
+        "app_title": (group.get("title") or app.get("title") or ""),
         "author_name": author.get("name", ""),
         "author_id_hash": hash_user_id(author.get("id")),
         # S5 正文常在 moment 顶层；S2/S6 常在 moment.topic 下 —— 两处都取
@@ -168,8 +174,15 @@ def collect_feed(
     parse_fn,
     stats: dict[str, int],
     label: str,
+    observed_at: str,
+    new_ids: list[str],
+    grown_ids: list[str],
 ) -> None:
-    """next_page 驱动翻页（next_page 是带 session_id 的完整路径，直接用它请求）。"""
+    """next_page 驱动翻页（next_page 是带 session_id 的完整路径，直接用它请求）。
+
+    thread 语义：新帖记 first_seen 进 new_ids；老帖计数只增记 delta 进 grown_ids——
+    帖子发现一次就够，评论靠后面的增量循环反复补。
+    """
     next_url: str | None = None
     params = first_params
     empty = 0
@@ -184,17 +197,29 @@ def collect_feed(
         if not items:
             print(f"[stop] {label} 第 {page} 页空")
             break
-        crawled_at = now_cn_iso()
         page_added = 0
         for it in items:
-            row = parse_fn(it, crawled_at)
+            row = parse_fn(it, observed_at)
             if not row:
                 continue
             stats["fetched"] += 1
-            if row["moment_id"] not in store:
+            old = store.get(row["moment_id"])
+            if old is None:
+                row["first_seen_at"] = observed_at
+                row["monitor_state"] = "active"
                 store[row["moment_id"]] = row
                 stats["added"] += 1
                 page_added += 1
+                new_ids.append(row["moment_id"])
+            else:
+                old["last_seen_at"] = observed_at
+                prev = int(old.get("last_comments") or 0)
+                if _int(row["comments"]) > prev:
+                    grown_ids.append(row["moment_id"])   # closed 帖重新增长也会被打开监测
+                old["comments"] = row["comments"]
+                old["supports"] = row["supports"]
+                old["ups"] = row["ups"]
+                old["pv_total"] = row["pv_total"]
         print(f"[page] {label} p{page} got={len(items)} added={page_added} total={len(store)}")
         if page_added == 0:
             empty += 1
@@ -254,18 +279,29 @@ def run(args: argparse.Namespace) -> int:
     # ---------- S5 发现页跨游戏流 ----------
     posts_path = data_dir / "discovery_posts.csv"
     comments_path = data_dir / "discovery_comments.csv"
+    snapshots_path = data_dir / "thread_snapshots.csv"
     posts = load_existing(posts_path, "moment_id")
     comments = load_existing(comments_path, "comment_id")
+    last_snap = load_last_snapshots(snapshots_path)
+    for p in posts.values():
+        p.setdefault("first_seen_at", p.get("crawled_at", ""))
+        p.setdefault("last_seen_at", "")
+        p.setdefault("last_comments", "")
+        p.setdefault("monitor_state", "active")
+    observed_at = now_cn_iso()
+    new_ids: list[str] = []
+    grown_ids: list[str] = []
 
     if "discover" in sources:
         collect_feed(
             cw, DISCOVER_URL, {"category_id": args.category_id, "sort": "default"},
             f"{BASE}/discover", args.max_pages, args.empty_pages, posts,
             lambda it, ts: parse_moment(it, ts, "discover"), stats, "S5",
+            observed_at, new_ids, grown_ids,
         )
         save_csv(posts_path, posts, POST_FIELDS)
 
-    # ---------- S6 话题下帖子流（S4 → 深挖） ----------
+    # ---------- S6 话题下帖子流（S4 → 深挖；产出与 S5 汇入同一 thread 表） ----------
     if "hashtag-feed" in sources:
         if not tags:
             tags = load_existing(data_dir / "hot_hashtags.csv", "hashtag_id")
@@ -287,36 +323,75 @@ def run(args: argparse.Namespace) -> int:
                 {"hashtag_id": tid, "from": 0, "limit": args.limit, "sort": "default"},
                 f"{BASE}/hashtag/{quote(tname)}", args.hashtag_pages, args.empty_pages, posts,
                 lambda it, ts, _tid=tid, _tn=tname: parse_moment(it, ts, "hashtag", _tid, _tn),
-                stats, f"S6:{tname[:12]}",
+                stats, f"S6:{tname[:12]}", observed_at, new_ids, grown_ids,
             )
             save_csv(posts_path, posts, POST_FIELDS)
 
-    # ---------- 评论（可选） ----------
-    if args.comment_limit > 0 and posts:
-        todo = [p for p in posts.values() if _int(p.get("comments")) > 0 and p["moment_id"] not in comments]
-        for p in todo[: args.max_comment_calls]:
-            gid = _int(p.get("group_id"))
-            if not gid:
-                continue
-            items = cw.fetch_comments(p["moment_id"], gid, args.comment_limit, f"{BASE}/discover")
-            stats["comment_calls"] += 1
-            crawled_at = now_cn_iso()
-            for ci in items:
-                c = parse_comment(ci, p["moment_id"], crawled_at)
-                if not c:
-                    continue
-                c["source_type"] = p.get("source_type", "")
-                if c["comment_id"] not in comments:
-                    comments[c["comment_id"]] = c
-                    stats["comments_added"] += 1
-            cw.polite_sleep()
-        save_csv(comments_path, comments, COMMENT_FIELDS)
+    # ---------- thread 计数快照（本轮全量写，爆火检测的数据基础） ----------
+    snap_rows: list[dict[str, Any]] = []
+    for mid, p in posts.items():
+        prev = int(p.get("last_comments") or last_snap.get(mid, {}).get("comments") or 0)
+        snap_rows.append({"moment_id": mid, "observed_at": observed_at,
+                          "comments": _int(p.get("comments")), "prev_comments": prev,
+                          "comment_delta": _int(p.get("comments")) - prev,
+                          "supports": _int(p.get("supports")), "ups": _int(p.get("ups")),
+                          "pv_total": _int(p.get("pv_total")), "source_type": p.get("source_type", "")})
+        p["last_comments"] = p.get("comments") or 0
+    append_snapshots(snapshots_path, snap_rows)
+    stats["snapshots"] = len(snap_rows)
+
+    # ---------- S3 式评论循环：新帖抓全，老帖涨了才补（预算制） ----------
+    comments_by_moment: dict[str, set[str]] = {}
+    for c in comments.values():
+        comments_by_moment.setdefault(c["moment_id"], set()).add(c["comment_id"])
+
+    fresh_new = sorted({m for m in new_ids if m in posts},
+                       key=lambda m: -_int(posts[m].get("comments")))
+    grown = sorted({m for m in grown_ids if m in posts},
+                   key=lambda m: -_int(posts[m].get("last_comments") or 0))
+    plan: list[tuple[str, str]] = []
+    for m in fresh_new:
+        if _post_age_days(posts[m]) <= args.max_age_days:
+            plan.append((m, "full"))
+    for m in grown:
+        if m not in fresh_new and _post_age_days(posts[m]) <= args.max_age_days:
+            plan.append((m, "refresh"))
+    print(f"[评论] 待抓：新帖 {len(fresh_new)} + 增量 {len(grown)}，预算 {args.max_comment_calls} 次")
+
+    for mid, mode in plan:
+        if stats["comment_calls"] >= args.max_comment_calls:
+            print(f"[评论] 预算用尽，剩余 {len(plan)} 帖下轮再补")
+            break
+        gid = _int(posts[mid].get("group_id"))
+        if not gid:
+            continue
+        new_rows, used = cw.fetch_all_comments(
+            mid, gid, f"{BASE}/discover",
+            max_pages=args.comment_pages_per_post if mode == "full" else 2,
+            known_ids=comments_by_moment.get(mid, set()))
+        stats["comment_calls"] += used
+        crawled_at = now_cn_iso()
+        for c in new_rows:
+            c["source_type"] = posts[mid].get("source_type", "")
+            c.setdefault("crawled_at", crawled_at)
+            comments[c["comment_id"]] = c
+            stats["comments_added"] += 1
+        posts[mid]["monitor_state"] = "active"       # 拉过评论（无论新旧）都视为重新活跃
+        print(f"[评论] {mode} moment={mid} +{len(new_rows)}（调用 {used}）")
+        cw.polite_sleep()
+
+    # 超龄且无增长 → 关监测（数据保留）
+    closed = 0
+    for m, p in posts.items():
+        if p.get("monitor_state") == "active" and _post_age_days(p) > args.max_age_days:
+            p["monitor_state"] = "closed"
+            closed += 1
 
     save_csv(posts_path, posts, POST_FIELDS)
     save_csv(comments_path, comments, COMMENT_FIELDS)
     print(
-        f"[done] posts={len(posts)} comments={len(comments)} pages={stats['pages']} "
-        f"comment_calls={stats['comment_calls']}"
+        f"[done] posts={len(posts)}(新{stats['added']}) comments={len(comments)}(+{stats['comments_added']}) "
+        f"snapshots+{stats['snapshots']} pages={stats['pages']} comment_calls={stats['comment_calls']} closed={closed}"
     )
     return 0
 
@@ -332,8 +407,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--category-id", type=int, default=0, help="S5 发现页分类 id（0=全部）")
     p.add_argument("--from-hot", type=int, default=5, help="S6：取热榜前 N 个话题深挖")
     p.add_argument("--hashtag-ids", default="", help="S6：指定话题 id（逗号分隔），优先于 --from-hot")
-    p.add_argument("--comment-limit", type=int, default=0, help="每帖评论抓取上限；0 = 不抓")
-    p.add_argument("--max-comment-calls", type=int, default=30, help="本轮评论接口调用上限")
+    p.add_argument("--max-comment-calls", type=int, default=120, help="本轮评论接口调用预算（新帖优先，其次增量大的）")
+    p.add_argument("--comment-pages-per-post", type=int, default=10, help="新帖全量抓评论的页数上限（每页 20 条）")
+    p.add_argument("--max-age-days", type=int, default=14, help="超过 N 天且无增长的帖子停止监测（数据保留）")
     p.add_argument("--sleep-min", type=float, default=0.8)
     p.add_argument("--sleep-max", type=float, default=1.5)
     return p

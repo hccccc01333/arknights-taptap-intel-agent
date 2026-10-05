@@ -50,6 +50,7 @@ TZ_CN = timezone(timedelta(hours=8))
 SOURCE_TYPES = {
     "post", "moment", "forum", "comment", "video", "review",
     "rating", "rank", "hashtag", "article", "index",
+    "group",   # S1 社区地图条目（聚合对象，同 hashtag 不当单条内容排序）
 }
 
 # ★ 信号类型：按「信号价值」分类，而不是按平台分类。

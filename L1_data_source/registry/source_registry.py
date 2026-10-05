@@ -41,9 +41,43 @@ DEFAULT_COMPLIANCE = {
 
 # ★ 种子：Platform 下挂多个 Source。acquisition_mode=internal 表示读本地已落盘数据
 # （本机没有 API 凭据与外网采集能力，这是诚实的实现边界，不是设计妥协）。
+# ★ TapTap 源按 S1-S6+U1 通道设计命名（docs/Agent-v2-架构设计.md §1，2026-09-28 抓包定案）：
+#   S1 group/v1/recommend            全平台社区地图（仅作 group_id 映射，不单独落盘）
+#   S2 feed/v7/by-group              单游戏社区帖子流（community/posts.csv，含内嵌热评）
+#   S3 moment-comment/v1/by-moment   帖子评论流（community/comments.csv，moment_id 关联 S2）
+#   S4 hashtag/v2/hot-hashtags       全站话题热榜（hot_hashtags.csv）
+#   S5 discover-categories/v2/feed-list + S6 feed/v7/by-hashtag
+#                                    发现页/话题帖（discovery_posts.csv，source_type 区分）
+#   S6 帖子评论（discovery_comments.csv）
+#   U1 feed/v7/by-user               用户社区足迹（user_flow/user_posts.csv）
 DEFAULT_SOURCES: List[Dict[str, Any]] = [
-    # ---------- TapTap：核心社区语声（补原料主战场）----------
-    dict(source_id="tap_hot_hashtags", platform="taptap", source_name="话题热榜",
+    # ---------- 外部：全网热点的搜索意图信号 ----------
+    dict(source_id="baidu_hot_search", platform="baidu_index", source_name="百度热搜榜（搜索意图）",
+         source_type="rank", signal_type="search", acquisition_mode="internal",
+         connector="internal", enabled=1, priority=0.95,
+         base_interval_seconds=600, min_interval_seconds=300, max_interval_seconds=3600,
+         timeout_seconds=20, max_concurrency=1, rate_limit_per_minute=20,
+         freshness_slo_seconds=1800, parser_version="baidu-1.0",
+         config={"dataset": "hot_search", "file": "hot_search.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
+    # ---------- TapTap：S1-S6+U1 通道（主战场）----------
+    dict(source_id="tap_group_map", platform="taptap", source_name="S1 全平台社区地图",
+         source_type="group", signal_type="community", acquisition_mode="internal",
+         connector="internal", enabled=1, priority=0.9,
+         base_interval_seconds=21600, min_interval_seconds=3600, max_interval_seconds=86400,
+         timeout_seconds=60, max_concurrency=1, rate_limit_per_minute=10,
+         freshness_slo_seconds=86400, parser_version="taptap-1.0",
+         config={"dataset": "group_map", "file": "community/community_map.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
+    dict(source_id="tap_group_categories", platform="taptap", source_name="S1 板块分类清单",
+         source_type="group", signal_type="community", acquisition_mode="internal",
+         connector="internal", enabled=1, priority=0.85,
+         base_interval_seconds=21600, min_interval_seconds=3600, max_interval_seconds=86400,
+         timeout_seconds=60, max_concurrency=1, rate_limit_per_minute=10,
+         freshness_slo_seconds=86400, parser_version="taptap-1.0",
+         config={"dataset": "group_map", "file": "community/community_categories.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
+    dict(source_id="tap_hot_hashtags", platform="taptap", source_name="S4 全站话题热榜（辅助展示）",
          source_type="hashtag", signal_type="community", acquisition_mode="internal",
          connector="internal", enabled=1, priority=0.95,
          base_interval_seconds=300, min_interval_seconds=60, max_interval_seconds=900,
@@ -51,7 +85,7 @@ DEFAULT_SOURCES: List[Dict[str, Any]] = [
          freshness_slo_seconds=600, parser_version="taptap-1.0",
          config={"dataset": "hashtags", "file": "hot_hashtags.csv"},
          compliance_config=DEFAULT_COMPLIANCE),
-    dict(source_id="tap_topic_feed", platform="taptap", source_name="话题下帖子（深采）",
+    dict(source_id="tap_topic_feed", platform="taptap", source_name="S5+S6 发现流与话题帖",
          source_type="moment", signal_type="community", acquisition_mode="internal",
          connector="internal", enabled=1, priority=0.9,
          base_interval_seconds=300, min_interval_seconds=60, max_interval_seconds=1200,
@@ -59,7 +93,7 @@ DEFAULT_SOURCES: List[Dict[str, Any]] = [
          freshness_slo_seconds=900, parser_version="taptap-1.0",
          config={"dataset": "moments", "file": "discovery_posts.csv"},
          compliance_config=DEFAULT_COMPLIANCE),
-    dict(source_id="tap_moment_comments", platform="taptap", source_name="动态评论",
+    dict(source_id="tap_moment_comments", platform="taptap", source_name="S5/S6 帖子评论（全量+增量）",
          source_type="comment", signal_type="community", acquisition_mode="internal",
          connector="internal", enabled=1, priority=0.8,
          base_interval_seconds=300, min_interval_seconds=120, max_interval_seconds=1800,
@@ -67,7 +101,32 @@ DEFAULT_SOURCES: List[Dict[str, Any]] = [
          freshness_slo_seconds=900, parser_version="taptap-1.0",
          config={"dataset": "comments", "file": "discovery_comments.csv"},
          compliance_config=DEFAULT_COMPLIANCE),
-    dict(source_id="tap_reviews", platform="taptap", source_name="游戏评论（带评分/时长）",
+    dict(source_id="tap_community_posts", platform="taptap",
+         source_name="S2 单游戏社区帖子流",
+         source_type="moment", signal_type="community", acquisition_mode="internal",
+         connector="internal", enabled=1, priority=0.85,
+         base_interval_seconds=300, min_interval_seconds=60, max_interval_seconds=1200,
+         timeout_seconds=30, max_concurrency=1, rate_limit_per_minute=30,
+         freshness_slo_seconds=900, parser_version="taptap-1.0",
+         config={"dataset": "moments", "file": "community/posts.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
+    dict(source_id="tap_community_comments", platform="taptap", source_name="S3 帖子评论流",
+         source_type="comment", signal_type="community", acquisition_mode="internal",
+         connector="internal", enabled=1, priority=0.8,
+         base_interval_seconds=300, min_interval_seconds=120, max_interval_seconds=1800,
+         timeout_seconds=30, max_concurrency=1, rate_limit_per_minute=30,
+         freshness_slo_seconds=900, parser_version="taptap-1.0",
+         config={"dataset": "comments", "file": "community/comments.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
+    dict(source_id="tap_user_flow", platform="taptap", source_name="U1 用户社区足迹（暂停：暂无消费方）",
+         source_type="moment", signal_type="community", acquisition_mode="internal",
+         connector="internal", enabled=0, priority=0.5,
+         base_interval_seconds=3600, min_interval_seconds=900, max_interval_seconds=21600,
+         timeout_seconds=30, max_concurrency=1, rate_limit_per_minute=10,
+         freshness_slo_seconds=21600, parser_version="taptap-1.0",
+         config={"dataset": "moments", "file": "user_flow/user_posts.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
+    dict(source_id="tap_reviews", platform="taptap", source_name="评分区评论（带评分/时长）",
          source_type="review", signal_type="community", acquisition_mode="internal",
          connector="internal", enabled=1, priority=0.6,
          base_interval_seconds=1800, min_interval_seconds=600, max_interval_seconds=7200,
@@ -75,7 +134,7 @@ DEFAULT_SOURCES: List[Dict[str, Any]] = [
          freshness_slo_seconds=3600, parser_version="taptap-1.0",
          config={"dataset": "reviews", "file": "reviews.csv", "batch_size": 3000},
          compliance_config={**DEFAULT_COMPLIANCE, "contains_pii": True}),
-    dict(source_id="tap_official", platform="taptap", source_name="官方公告",
+    dict(source_id="tap_official", platform="taptap", source_name="官方公告（U1 官方账号）",
          source_type="article", signal_type="official", acquisition_mode="internal",
          connector="internal", enabled=1, priority=0.7,
          base_interval_seconds=3600, min_interval_seconds=900, max_interval_seconds=21600,
@@ -84,6 +143,14 @@ DEFAULT_SOURCES: List[Dict[str, Any]] = [
          config={"dataset": "announcements", "file": "announcements/announcements.jsonl"},
          compliance_config=DEFAULT_COMPLIANCE),
 
+    dict(source_id="bili_game_hot", platform="bilibili", source_name="B站游戏区+全站热门",
+         source_type="video", signal_type="content", acquisition_mode="internal",
+         connector="internal", enabled=1, priority=0.8,
+         base_interval_seconds=900, min_interval_seconds=300, max_interval_seconds=3600,
+         timeout_seconds=30, max_concurrency=1, rate_limit_per_minute=20,
+         freshness_slo_seconds=3600, parser_version="bilibili-1.0",
+         config={"dataset": "videos", "file": "hot_videos.csv"},
+         compliance_config=DEFAULT_COMPLIANCE),
     # ---------- B站：内容信号 ----------
     dict(source_id="bili_search", platform="bilibili", source_name="关键词搜索结果",
          source_type="video", signal_type="content", acquisition_mode="internal",

@@ -13,7 +13,7 @@
     "weibo_uids": "6441486180"
   },
   "notes": "高投入阈值 100h 为展示口径（明日方舟存量游戏语境），可用 --high-hours 覆盖；aliases 用于对照渠过滤。 | group_id=53933 由社区页 HTML 自寻（2026-09-30）",
-  "data_dir": "02数据",
+  "data_dir": "data/raw/taptap",
   "group_id": 53933,
   "official_account": {
     "user_id": 16966303,

@@ -30,7 +30,8 @@ from typing import Any
 import requests
 
 MOD_DIR = Path(__file__).resolve().parent
-ROOT = MOD_DIR.parent
+ROOT = Path(__file__).resolve().parents[3]   # 项目根（games/、.env、taptap .env 都从这里找）
+DATA_DIR = ROOT / "data" / "raw" / "weibo"   # 数据落回 data/raw/，注册表 internal connector 从这里读
 
 DEFAULT_GAME = "arknights"  # 游戏档案 key，见 games/<key>.json
 
@@ -53,12 +54,12 @@ def is_relevant(text: str) -> bool:
     """软相关过滤：任一等价名（aliases）命中即视为相关。"""
     low = (text or "").lower()
     return any(a.lower() in low for a in _ALIASES)
-RAW_DIR = MOD_DIR / "raw"
-REPORT_DIR = MOD_DIR / "reports"
-RUN_LOG_DIR = MOD_DIR / "run_logs"
-OUT_CSV = MOD_DIR / "comments_sample.csv"
-POSTS_CSV = MOD_DIR / "posts_sample.csv"
-CHECKPOINT = MOD_DIR / "checkpoint_crawl.json"
+RAW_DIR = DATA_DIR / "json"
+REPORT_DIR = DATA_DIR / "reports"
+RUN_LOG_DIR = DATA_DIR / "run_logs"
+OUT_CSV = DATA_DIR / "comments_sample.csv"
+POSTS_CSV = DATA_DIR / "posts_sample.csv"
+CHECKPOINT = DATA_DIR / "checkpoint_crawl.json"
 
 TZ_CN = timezone(timedelta(hours=8))
 DEFAULT_UA = (
@@ -379,7 +380,7 @@ def post_to_row(post: dict[str, Any]) -> dict[str, Any]:
         "item_type": "post",
         "source": post.get("source") or "weibo",
         "crawled_at": now_cn_iso(),
-        "raw_json_path": str(raw_path.relative_to(MOD_DIR)).replace("\\", "/") if raw_path.exists() else "",
+        "raw_json_path": str(raw_path.relative_to(DATA_DIR)).replace("\\", "/") if raw_path.exists() else "",
     }
 
 
@@ -413,7 +414,7 @@ def comment_to_row(c: dict[str, Any], post: dict[str, Any], source: str) -> dict
         "item_type": "comment",
         "source": source,
         "crawled_at": now_cn_iso(),
-        "raw_json_path": str(raw_path.relative_to(MOD_DIR)).replace("\\", "/"),
+        "raw_json_path": str(raw_path.relative_to(DATA_DIR)).replace("\\", "/"),
     }
 
 
@@ -736,7 +737,10 @@ def main(args: argparse.Namespace) -> int:
     items = collect_items(client, posts, args.target, args.max_comment_pages) if posts else []
     degrade_used = False
 
-    if len(items) < 200:
+    # ★ 合成降级样本默认关闭（项目纪律：没有的数据不编）。
+    #   真要演示链路时显式 WEIBO_ALLOW_DEGRADED_SAMPLE=1 打开。
+    allow_degraded = os.environ.get("WEIBO_ALLOW_DEGRADED_SAMPLE", "0") in {"1", "true", "True"}
+    if len(items) < 200 and allow_degraded:
         client.stats["degraded"] = True
         degrade_used = True
         need = max(args.target, 240)

@@ -235,7 +235,7 @@ class ConnectorRuntime:
 
     def _to_dlq(self, source_id: str, error_type: str, record: Dict, run_id: str,
                 problems: Optional[List[str]] = None) -> None:
-        payload = {"run_id": run_id, "record_keys": sorted(list(record.keys()))[:20],
+        payload = {"run_id": run_id, "record_keys": sorted(str(k) for k in record.keys())[:20],
                    "problems": problems or []}
         self.store.push_dlq(uuid.uuid4().hex[:16], source_id, error_type, payload)
         self.bus.publish("deadletter.raw", {"source_id": source_id, "error_type": error_type, **payload})

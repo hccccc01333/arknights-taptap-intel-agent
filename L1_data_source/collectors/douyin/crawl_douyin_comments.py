@@ -29,13 +29,14 @@ from urllib.parse import quote, unquote
 import requests
 
 MOD_DIR = Path(__file__).resolve().parent
-ROOT = MOD_DIR.parent
-RAW_DIR = MOD_DIR / "raw"
-REPORT_DIR = MOD_DIR / "reports"
-RUN_LOG_DIR = MOD_DIR / "run_logs"
-OUT_CSV = MOD_DIR / "comments_sample.csv"
-VIDEOS_CSV = MOD_DIR / "videos_sample.csv"
-CHECKPOINT = MOD_DIR / "checkpoint_crawl.json"
+ROOT = Path(__file__).resolve().parents[3]   # 项目根（分层重排后脚本在 L1_data_source/collectors/douyin/）
+DATA_DIR = ROOT / "data" / "raw" / "douyin"  # 数据落回 data/raw/，注册表 internal connector 从这里读
+RAW_DIR = DATA_DIR / "json"
+REPORT_DIR = DATA_DIR / "reports"
+RUN_LOG_DIR = DATA_DIR / "run_logs"
+OUT_CSV = DATA_DIR / "comments_sample.csv"
+VIDEOS_CSV = DATA_DIR / "videos_sample.csv"
+CHECKPOINT = DATA_DIR / "checkpoint_crawl.json"
 
 TZ_CN = timezone(timedelta(hours=8))
 DEFAULT_UA = (
@@ -681,7 +682,7 @@ def comment_to_row(comment: dict[str, Any], video: dict[str, Any], source: str) 
         "keyword": video.get("keyword", ""),
         "source": source,
         "crawled_at": now_cn_iso(),
-        "raw_json_path": str(raw_path.relative_to(MOD_DIR)).replace("\\", "/"),
+        "raw_json_path": str(raw_path.relative_to(DATA_DIR)).replace("\\", "/"),
     }
 
 

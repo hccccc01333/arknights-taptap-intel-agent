@@ -68,6 +68,52 @@ def _comment(row, raw_ref, ctx) -> ContentEvent:
     )
 
 
+def _group_map(row, raw_ref, ctx) -> ContentEvent:
+    """S1 全平台社区地图条目：聚合对象（分类/优先级/寻址索引），不当单条内容排序。
+
+    ★ 这条是 S2 的寻址基础：app_id + group_id = 某个游戏社区的门牌号。
+      stat 四要素（关注数/帖子量/近期活跃/官方声量）冗余成列后，
+      上层做分类、优先级、热度排序可以直接用，不必解 stat_json。
+    """
+    import json as _json
+    stat = row.get("stat_json") or ""
+    try:
+        stat_obj = _json.loads(stat) if stat else {}
+    except ValueError:
+        stat_obj = {}
+    def _i(k: str) -> int:
+        try:
+            return int(row.get(k) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return ContentEvent(
+        platform="taptap",
+        source_type="group",
+        signal_type="community",
+        title=pick(row, "title"),
+        content=pick(row, "intro") or None,
+        author_id="unknown",
+        published_at=to_iso(pick(row, "last_seen_at")),
+        # 关注数=社区体量、评论数=官方声量的近似（接口无统一转发数）
+        favorites=_i("favorite_count"),
+        comments=_i("official_topic_count"),
+        external_id=pick(row, "group_id"),
+        raw_ref=raw_ref,
+        metadata={
+            "app_id": pick(row, "app_id"),
+            "has_official": pick(row, "has_official"),
+            "web_url": pick(row, "web_url"),
+            "source": pick(row, "source"),
+            # ★ 四要素（顶层也放一份，上层不必猜字段位置）
+            "favorite_count": _i("favorite_count"),
+            "topic_count": _i("topic_count"),
+            "recent_topic_count": _i("recent_topic_count"),
+            "official_topic_count": _i("official_topic_count"),
+            "stat": stat_obj,
+        },
+    )
+
+
 def _hashtag(row, raw_ref, ctx) -> ContentEvent:
     """话题是聚合对象，不是单条内容——单独标成 hashtag，避免和帖混在一起排序。"""
     return ContentEvent(
