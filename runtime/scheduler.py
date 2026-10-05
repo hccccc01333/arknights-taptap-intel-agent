@@ -60,7 +60,7 @@ SCHEMA_VERSION = "1.1"
 # 踩过的坑：用只装了标准库的解释器跑 → 爬虫 ImportError → 只看到「退出码 1」，很难查。
 # 所以下面做预检，快速失败并给出可执行的建议。
 REQUIRED_CHILD_DEPS = ("requests",)
-VENV_HINT = r"C:\Users\Hzz\.workbuddy\binaries\python\envs\default\Scripts\python.exe"
+VENV_HINT = "当前解释器：" + sys.executable + " —— 请用装了依赖的解释器运行此模块"
 
 
 def _has_module(name: str) -> bool:

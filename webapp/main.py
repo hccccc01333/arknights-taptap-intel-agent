@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -26,6 +27,19 @@ import webapp.services as S
 from webapp.auth import issue_token, parse_token, verify_login
 
 app = FastAPI(title="Growth Intelligence OS", version=S.WEBAPP_VERSION)
+
+# A separately hosted frontend (for example GitHub Pages) can opt into CORS.
+# Leave it disabled by default; the local Vite proxy works without CORS.
+_FRONTEND_ORIGINS = [origin.strip() for origin in
+                     os.environ.get("WEBAPP_ALLOWED_ORIGINS", "").split(",")
+                     if origin.strip()]
+if _FRONTEND_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_FRONTEND_ORIGINS,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
 # ---------------------------------------------------------------- 认证

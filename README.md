@@ -207,7 +207,6 @@ python -m uvicorn webapp.main:app --port 8200     # 演示密码 demo
 - 百度热搜是**搜索意图**，不等于讨论热度
 - 微博无公开趋势指数 → 用跨轮变化率代替
 - 免费模型结构化输出有条数上限（8 条/次），已做自适应拆分
-- 深度分析用的 DeepSeek key 余额不足（HTTP 402），当前走 OpenRouter 免费模型
 
 ---
 

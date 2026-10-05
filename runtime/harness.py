@@ -66,7 +66,7 @@ L3_DB = ROOT / "data" / "state" / "l3_trend.sqlite3"
 L4_DB = ROOT / "data" / "state" / "l4_intelligence.sqlite3"
 
 REQUIRED_CHILD_DEPS = ("requests",)
-VENV_HINT = r"C:\Users\Hzz\.workbuddy\binaries\python\envs\default\Scripts\python.exe"
+VENV_HINT = "当前解释器：" + sys.executable + " —— 请用装了依赖的解释器运行此模块"
 
 TRACE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS tool_runs (
