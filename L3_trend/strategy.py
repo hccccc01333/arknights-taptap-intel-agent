@@ -52,6 +52,19 @@ HARD_LIMITS = {
     "sleep_max": (0.5, 10.0),             # 请求最大间隔
 }
 
+# ★ 基准参数：每轮策略调整的起点（不是上轮调整后的值）。
+#   防止复合膨胀：如果每次在上轮基础上调整，120→270→405→…会失控。
+#   Agent 的调整 = BASE ± 信号驱动的偏移量，而不是在上轮基础上乘系数。
+BASE_CONFIG: Dict[str, Any] = {
+    "fresh_hours": 72,
+    "max_pages": 12,
+    "max_comment_calls": 150,
+    "comment_pages_per_post": 10,
+    "max_age_days": 14,
+    "sleep_min": 0.8,
+    "sleep_max": 1.5,
+}
+
 
 def _n(v: Any) -> int:
     try:
@@ -109,7 +122,8 @@ class StrategyEngine:
     def _load_state(self) -> Dict[str, Any]:
         posts = _read_csv(POSTS)
         snaps = _read_csv(SNAPSHOTS)
-        cfg = _read_json(CONFIG_PATH)
+        # ★ 每轮从 BASE 出发调整，不是在上轮基础上叠加（防复合膨胀 120→270→405→…）
+        cfg = dict(BASE_CONFIG)
 
         # 发帖速率（publish_time 锚定）
         now_ts = self.now.timestamp()
