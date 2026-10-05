@@ -694,6 +694,8 @@ class TestSuppressConsole(unittest.TestCase):
             self.assertFalse(hr.suppress_console(self._log()))
         self.assertEqual(calls, [], "没有窗口句柄就不该调 ShowWindow")
 
+    @unittest.skipUnless(sys.platform == "win32",
+                         "控制台隐藏/重定向是 Windows 特有行为（ctypes.windll），非 Windows 平台不适用")
     def test_hides_and_redirects_when_own_console(self):
         """正向路径（本环境无法端到端复现，用 mock 验控制流）：隐藏 + 输出转日志。"""
         import ctypes

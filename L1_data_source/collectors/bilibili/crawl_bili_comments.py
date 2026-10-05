@@ -52,12 +52,13 @@ def is_relevant(text: str) -> bool:
     low = (text or "").lower()
     return any(a.lower() in low for a in _ALIASES)
 MOD_DIR = Path(__file__).resolve().parent
-RAW_DIR = MOD_DIR / "raw"
-REPORT_DIR = MOD_DIR / "reports"
-RUN_LOG_DIR = MOD_DIR / "run_logs"
-OUT_CSV = MOD_DIR / "comments_sample.csv"
-VIDEOS_CSV = MOD_DIR / "videos_sample.csv"
-CHECKPOINT = MOD_DIR / "checkpoint_crawl.json"
+DATA_DIR = ROOT / "data" / "raw" / "bilibili"  # 数据落回 data/raw/，注册表 internal connector 从这里读
+RAW_DIR = DATA_DIR / "json"
+REPORT_DIR = DATA_DIR / "reports"
+RUN_LOG_DIR = DATA_DIR / "run_logs"
+OUT_CSV = DATA_DIR / "comments_sample.csv"
+VIDEOS_CSV = DATA_DIR / "videos_sample.csv"
+CHECKPOINT = DATA_DIR / "checkpoint_crawl.json"
 
 TZ_CN = timezone(timedelta(hours=8))
 DEFAULT_UA = (
@@ -423,7 +424,7 @@ def reply_to_row(reply: dict[str, Any], video: dict[str, Any]) -> dict[str, Any]
         "keyword": video.get("keyword", ""),
         "source": video.get("source", ""),
         "crawled_at": now_cn_iso(),
-        "raw_json_path": str(raw_path.relative_to(MOD_DIR)).replace("\\", "/"),
+        "raw_json_path": str(raw_path.relative_to(DATA_DIR)).replace("\\", "/"),
     }
 
 

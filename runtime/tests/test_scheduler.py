@@ -244,7 +244,11 @@ class TestOrchestration(TmpCase):
 
     def test_run_once_aggregates_chain_result(self):
         """run_once 的 ok 要反映链上失败 —— 但 refused/skipped 的任务不算失败。"""
+        # 预检只验「子进程依赖在不在」（requests），与本用例要验的聚合逻辑无关。
+        # CI 裸环境没装 requests → preflight 判失败 → ok 恒 False → 误报。
+        pf_ok = {"ok": True, "missing": [], "interpreter": "python", "hint": None}
         with mock.patch.object(sch, "SCHED_DB", self.db), \
+             mock.patch.object(sch, "preflight", return_value=pf_ok), \
              mock.patch.object(sch.harness, "exec_command"), \
              mock.patch.object(sch.harness, "run_task",
                                side_effect=[{"ok": True, "n_steps": 1},
