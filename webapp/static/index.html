@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>增长情报台</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=20261005b">
 </head>
 <body>
 
@@ -28,7 +28,9 @@
   <header class="top">
     <div class="brand"><span class="logo">◆</span> 增长情报台</div>
     <nav class="tabs" id="tabs">
-      <button class="tab active" data-tab="today">今日情报</button>
+      <button class="tab active" data-tab="today">社区报告</button>
+      <button class="tab" data-tab="creatives">增长创意</button>
+      <button class="tab" data-tab="sources">数据源</button>
       <button class="tab" data-tab="trend">趋势分析</button>
       <button class="tab" data-tab="exec">执行与实验</button>
       <button class="tab" data-tab="memory">团队记忆</button>
@@ -42,16 +44,70 @@
 
   <!-- 内容区 -->
   <main class="main" id="main">
-    <!-- 今日情报 -->
+    <!-- 社区报告 -->
     <section class="page" id="page-today">
       <div class="page-head">
         <div>
-          <h1 id="today-title">今天先看这些</h1>
+          <h1 id="today-title">社区报告</h1>
           <p class="sub" id="today-sub">正在为你整理…</p>
         </div>
-        <div class="stat-row" id="today-stats"></div>
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div class="stat-row" id="today-stats"></div>
+          <button class="btn-ghost" id="btn-refresh-today">刷新</button>
+        </div>
       </div>
-      <div id="today-list" class="cards"></div>
+      <div id="today-list" class="creps"></div>
+    </section>
+
+    <!-- 增长创意（L4 热点 → 创意） -->
+    <section class="page hidden" id="page-creatives">
+      <div class="page-head">
+        <div><h1>增长创意</h1>
+          <p class="sub">外部热点 → 增长机会 → 可执行动作。每条都带位置/步骤/文案/素材/风险，可直接交给运营。</p></div>
+        <button class="btn-ghost" id="btn-refresh-creatives">刷新</button>
+      </div>
+      <div class="stat-row" id="cre-stats"></div>
+      <div class="panel"><h3>外部热点 · 正在形成 <span class="sec-tip">来自微博/百度/B站跨轮快照</span></h3>
+        <div id="cre-forming" class="list"></div></div>
+      <div id="cre-list"></div>
+    </section>
+
+    <!-- 数据源（L1） -->
+    <section class="page hidden" id="page-sources">
+      <div class="page-head">
+        <div><h1>数据源</h1>
+          <p class="sub">第一层采集全貌：谁在抓、抓什么、抓了多少、帖子↔评论配对了多少。采集是全链路的地基。</p></div>
+        <button class="btn-ghost" id="btn-refresh-sources">刷新</button>
+      </div>
+      <div class="panel">
+        <h3>采集参数 <span class="sec-tip">改完立即落盘，爬虫下一轮自动生效</span></h3>
+        <div id="src-cfg" class="cfg-grid"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:13px">
+          <button class="btn-go" id="btn-save-cfg">保存参数</button>
+          <button class="btn-ghost" id="btn-reset-cfg">恢复默认</button>
+          <span class="hint" id="cfg-saved"></span>
+        </div>
+        <div class="set-note">监测窗口 = 一个帖子的 thread 停止被监测的时长（超期且评论不增长就关闭，
+          数据仍保留）；新帖窗口 = 只收最近 N 小时发布的帖；点赞阈值 = 帖子点赞达到此值就抓全评论并重点监测。</div>
+      </div>
+      <div class="stat-row" id="src-stats"></div>
+      <div class="panel"><h3>S1 游戏社区索引（app_id → group_id：S2 采集的寻址基础）</h3>
+        <div id="src-gameindex" class="list"></div>
+        <div class="set-note">每个社区带<b>四要素</b>：关注数（社区体量）/ 帖子量 /
+          近期活跃（<span>近期帖子数 = 当前热度</span>）/ 官方声量（官方帖数）。
+          分类、优先级、热度排序都基于这四个数。</div></div>
+      <div class="panel"><h3>thread 监测（帖子=监测单元：发现一次，评论反复补增量）</h3>
+        <div id="src-threads" class="list"></div>
+        <div class="set-note">每个 thread 每轮记一条<b>计数快照</b>（评论数/浏览/赞），
+          增量 = 两次快照之差 —— 这是爆火检测的数据基础。评论内容只在
+          <b>新帖</b>或<b>计数增长</b>时才下钻抓取，预算优先给增长大的。</div></div>
+      <div class="panel"><h3>采集源</h3><div id="src-table" class="table-wrap"></div></div>
+      <div class="two-col">
+        <div class="panel"><h3>配对诊断（帖子/视频 ↔ 自己的评论）</h3>
+          <div id="src-pairing" class="bars"></div>
+          <div class="set-note" id="src-pair-note"></div></div>
+        <div class="panel"><h3>最近采集运行</h3><div id="src-runs" class="list"></div></div>
+      </div>
     </section>
 
     <!-- 趋势分析 -->
@@ -124,6 +180,6 @@
   <div id="toast"></div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=20261005b"></script>
 </body>
 </html>

@@ -7,6 +7,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pct = (v) => v == null ? "—" : Math.round(Number(v) * 100);
 const num = (v) => v == null ? "—" : Number(v).toLocaleString();
+const pill = (kind, txt) => `<span class="pill ${kind}">${txt}</span>`;
 
 /* ============ 术语翻译（后端英文 → 用户看到的中文） ============ */
 const ZH = {
@@ -51,46 +52,28 @@ function toast(msg, kind) {
   setTimeout(() => d.remove(), 4200);
 }
 
-/* ============ 迷你趋势图（真实数据：热度构成，不是编的曲线） ============ */
-function sparkline(hot, mom, conf) {
-  const w = 108, h = 30;
-  const vals = [hot || 0, mom || 0, conf || 0];
-  const mx = Math.max(...vals, 0.1);
-  const bw = w / 3 - 5;
-  const bars = vals.map((v, i) => {
-    const bh = Math.max(3, (v / mx) * (h - 4));
-    const c = ["#4a9eff", "#3ecf8e", "#a78bfa"][i];
-    return `<rect x="${i * (bw + 5)}" y="${h - bh}" width="${bw}" height="${bh}"
-      rx="2" fill="${c}" opacity=".85" style="--w:0%">
-      <animate attributeName="opacity" from="0" to=".85" dur=".7s"
-        begin="${0.15 + i * 0.12}s" fill="freeze"/></rect>`;
-  }).join("");
-  return `<svg class="spark" width="${w}" height="${h + 12}" viewBox="0 0 ${w} ${h + 12}">
-    ${bars}
-    <text x="0" y="${h + 11}" fill="#6b7789" font-size="8">热/势/信</text></svg>`;
-}
+/* ============ 社区报告列表（L3 图社区检测 × L4 报告生成） ============ */
+async function loadToday(refresh) {
+  const d = await api("/communities" + (refresh ? "?refresh=1" : ""));
+  const reports = d.reports || [];
+  const totalEv = reports.reduce((s, r) => s + (r.n_events || 0), 0);
+  const totalCt = reports.reduce((s, r) => s + (r.total_content || 0), 0);
 
-/* ============ 今日情报 ============ */
-async function loadToday() {
-  const feed = await api("/feed?limit=40");
-  S.cards = feed.cards || [];
-  const hot = S.cards.filter((c) => c.group === "ACTION_NOW");
-  const watch = S.cards.filter((c) => c.group === "WATCH");
-  const cool = S.cards.filter((c) => c.group === "DECLINING");
-
-  $("today-title").textContent = hot.length ? "今天先看这几件事" : "今天没有紧急的事";
-  $("today-sub").textContent =
-    "从 " + num(S.cards.length) + " 个正在发生的话题里，按「有多值得现在动手」挑出来的";
+  $("today-title").textContent = reports.length ? "这些社群正在讨论什么" : "还没有社区报告";
+  $("today-sub").textContent = reports.length
+    ? "话题按实体共现聚成讨论社群，一份报告 = 一个社群的来龙去脉。点话题可展开单条详情。"
+    : "先跑一轮 L3 趋势引擎，话题聚成社群后这里就会出现报告。";
   $("today-stats").innerHTML =
-    stat(hot.length, "值得马上看", "hl") +
-    stat(watch.length, "可以看看", "") +
-    stat(cool.length, "已经降温", "warn");
+    stat(reports.length, "讨论社群", "hl") +
+    stat(totalEv, "话题") +
+    stat(totalCt, "内容");
 
-  const list = hot.concat(watch).concat(cool);
-  $("today-list").innerHTML = list.length ? list.map(card).join("") :
-    `<div class="empty">暂时没有正在发生的话题。<br>等采集器跑一轮就有了。</div>`;
-  $("today-list").querySelectorAll(".card").forEach((n, i) => {
-    n.style.animationDelay = Math.min(i * 0.055, 0.8) + "s";
+  $("today-list").innerHTML = reports.length ? reports.map(communityReport).join("") :
+    `<div class="empty">还没有社区报告。<br>跑一次 L3 趋势引擎，就会把碎片话题聚成可读的社群。</div>`;
+  $("today-list").querySelectorAll(".crep").forEach((n, i) => {
+    n.style.animationDelay = Math.min(i * 0.07, 0.6) + "s";
+  });
+  $("today-list").querySelectorAll(".trow[data-eid]").forEach((n) => {
     n.onclick = () => openDrawer(n.dataset.eid);
   });
 }
@@ -98,46 +81,61 @@ function stat(n, label, kind) {
   return `<div class="stat ${kind}"><b>${n}</b><span>${label}</span></div>`;
 }
 
-function card(c) {
-  const life = c.lifecycle || "";
-  const w = c.window || {};
-  const own = c.workflow && c.workflow.owner;
+/* 生命周期中文 → 配色（L4 报告里的 lifecycles 键已是中文） */
+const LIFE_KIND_ZH = Object.fromEntries(
+  Object.entries(ZH.life).map(([k, v]) => [v, ZH.lifeKind[k]]));
+/* L4 报告的用词 → 界面统一用词（同一条生命周期别在两处叫两个名字） */
+const L4_LIFE_ZH = { "正在起势": "刚起势" };
+
+function communityReport(r, i) {
   const pill = (kind, txt) => `<span class="pill ${kind}">${txt}</span>`;
-  return `<div class="card" data-eid="${esc(c.event_id)}">
-    <div class="card-top">
+  const HEAT_KIND = { "爆": "hot", "热": "warm", "温": "info", "冷": "cool" };
+  const title = r.headline || (r.entity_labels || []).slice(0, 3).join(" · ") || "未命名社群";
+
+  const life = Object.entries(r.lifecycles || {});
+  const lmx = Math.max(...life.map(([, v]) => v), 1);
+  const lifeBars = life.map(([k, v]) => {
+    const zh = L4_LIFE_ZH[k] || k;
+    const kind = LIFE_KIND_ZH[zh] || "cool";
+    return `<div class="crep-life"><span class="n">${v}</span>
+      <span class="bar"><i style="--w:${v / lmx * 100}%" data-kind="${kind}"></i></span>
+      <span class="k">${esc(zh)}</span></div>`;
+  }).join("");
+
+  const plats = Object.entries(r.platforms || {}).slice(0, 4)
+    .map(([p, n]) => pill("cool", esc(p) + " " + n)).join("");
+  const acts = (r.actions || [])
+    .map((a) => `<div class="crep-act"><span>▸</span>${esc(a)}</div>`).join("");
+  const evs = (r.events || []).map((e) => {
+    const lk = ZH.life[e.lifecycle] || "—";
+    const hk = e.heat_kind || HEAT_KIND[e.heat] || "cool";
+    return `<div class="trow" data-eid="${esc(e.event_id)}" title="${esc(e.title || "")}">
+      <span class="tname">${esc(e.title || "（无标题话题）")}</span>
+      <span>${num(e.content_count)}</span>
+      <span>${pill(hk, e.heat || "—")}</span>
+      <span>${pill(ZH.lifeKind[e.lifecycle] || "cool", lk)}</span></div>`;
+  }).join("");
+  const more = r.hidden_topics > 0
+    ? `<div class="crep-more">另有 ${r.hidden_topics} 个零散小话题，信息量太少没列出</div>` : "";
+
+  return `<div class="crep">
+    <div class="crep-head">
+      <div class="crep-rank">${String(i + 1).padStart(2, "0")}</div>
       <div style="min-width:0">
-        <h3>${esc(c.title || "（无标题话题）")}</h3>
-        <div class="card-sub">${num(c.content_count)} 条讨论 · 出现在 ${num(c.platform_count)} 个平台</div>
+        <h3>${esc(title)}</h3>
+        <div class="card-sub">${num(r.n_events)} 个话题 · ${num(r.total_content)} 条内容 · 最热话题「${esc(r.max_heat_label || "—")}」档</div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-        ${pill(ZH.lifeKind[life] || "cool", ZH.life[life] || "状态未知")}
-        ${w.urgency ? pill(ZH.urgKind[w.urgency] || "cool", ZH.urg[w.urgency]) : ""}
-      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${plats}</div>
     </div>
-    <div class="card-mid">
-      <div class="metrics">
-        ${metric("热度", c.hot_score, "#4a9eff")}
-        ${metric("势头", c.momentum_score, "#3ecf8e")}
-        ${metric("可信", c.confidence_score, "#a78bfa")}
-        ${c.relevance != null ? metric("跟我们的关系", c.relevance, "#f5b544") : ""}
-      </div>
-      ${sparkline(c.hot_score, c.momentum_score, c.confidence_score)}
-    </div>
-    ${c.ai_judgement ? `<div class="card-ai"><span class="ai">💡</span>
-      <div><b>系统怎么看：</b>${esc(c.ai_judgement)}</div></div>` : ""}
-    <div class="card-foot">
-      ${own ? pill("info", "负责人：" + esc(own)) : pill("cool", "还没人负责")}
-      ${c.n_opportunities ? pill("good", c.n_opportunities + " 个增长机会") : ""}
-      <span class="sp"></span>
-      <span class="hint">点开看看来龙去脉 →</span>
-    </div>
+    ${r.narrative ? `<p class="crep-narr">${esc(r.narrative)}</p>` : ""}
+    ${lifeBars || acts ? `<div class="crep-mid">
+      ${lifeBars ? `<div class="crep-lifes">${lifeBars}</div>` : ""}
+      ${acts ? `<div class="crep-acts"><b>可以做什么</b>${acts}</div>` : ""}
+    </div>` : ""}
+    ${evs ? `<div class="crep-events">
+      <div class="trow head"><span>社群内的话题（点开看详情）</span><span>内容</span><span>热度</span><span>阶段</span></div>${evs}</div>` : ""}
+    ${more}
   </div>`;
-}
-function metric(label, v, color) {
-  const p = Math.max(2, Math.min(100, (Number(v) || 0) * 100));
-  return `<div class="metric"><div class="lab">${label}</div>
-    <div class="val">${pct(v)}</div>
-    <div class="track"><i style="--w:${p}%;background:${color}"></i></div></div>`;
 }
 
 /* ============ 详情抽屉：来龙去脉 + 动画可视化 ============ */
@@ -359,9 +357,180 @@ async function cmd(input, okMsg) {
   } catch (e) { toast(e.message, "err"); }
 }
 
+/* ============ 采集参数（前端可调） ============ */
+async function loadCrawlConfig() {
+  const d = await api("/crawl-config");
+  S.cfg = d;
+  $("src-cfg").innerHTML = Object.entries(d.limits || {}).map(([k, [lo, hi]]) => {
+    const v = (d.values || {})[k];
+    const step = (k === "sleep_min" || k === "sleep_max") ? 0.1 : 1;
+    return `<label class="cfg-row"><span>${esc((d.labels || {})[k] || k)}</span>
+      <input type="number" data-cfg="${esc(k)}" value="${v}" min="${lo}" max="${hi}" step="${step}">
+      <i class="hint">${lo}~${hi}</i></label>`;
+  }).join("");
+}
+
+async function saveCrawlConfig(reset) {
+  const values = {};
+  document.querySelectorAll("[data-cfg]").forEach((n) => {
+    values[n.dataset.cfg] = n.value;
+  });
+  if (reset) {
+    const d = await api("/crawl-config");
+    values = Object.assign({}, d.defaults);
+  }
+  try {
+    const out = await api("/crawl-config", { values });
+    S.cfg = out;
+    loadCrawlConfig();
+    toast("采集参数已保存，下一轮采集自动生效", "ok");
+  } catch (e) { toast(e.message, "err"); }
+}
+
+
+/* ============ 增长创意（结构化 schema 渲染） ============ */
+async function loadCreatives() {
+  const d = await api("/growth-creatives");
+  const cs = d.creatives || [];
+  const chans = d.channels || {};
+  $("cre-stats").innerHTML =
+    stat(cs.length, "条创意", "hl") +
+    stat(Object.keys(chans).length, "监控渠道") +
+    stat((d.forming_game || []).length, "游戏相关形成中", "warn");
+
+  const fg = d.forming_game || [];
+  $("cre-forming").innerHTML = fg.length ? fg.map((f) =>
+    `<div class="item"><div class="item-main">
+       <div class="item-title">${esc(f.word || "")}</div>
+       <div class="item-sub">${esc(f.stage_label || "")} · ${f.trend_rate != null ? f.trend_rate + "%" : "新进榜"} · 在榜 ${f.on_board_min || 0} 分</div></div>
+       ${pill("hot", "#" + (f.rank || "?"))}</div>`).join("")
+    : `<div class="empty">还没有形成中的游戏相关热点<br>采集需要多轮快照（每 10-15 分钟一轮）才能判趋势</div>`;
+
+  $("cre-list").innerHTML = cs.length ? cs.map(creativeCard).join("")
+    : `<div class="empty">还没有生成创意。<br>
+       先跑 <code>python L4_intelligence/intelligence/hotspot_to_creative.py</code></div>`;
+}
+
+function creativeCard(c) {
+  const ex = c.execution || {}, cp = c.copy || {};
+  const steps = (ex.steps || []).map((s, i) =>
+    `<li>${esc(s)}</li>`).join("");
+  const assets = (c.assets || []).map((a) =>
+    `<span class="pill info">${esc(a.type || "素材")}：${esc(a.desc || "")}</span>`).join("");
+  const risks = (c.risks || []).map((r) =>
+    `<div class="risk-row ${r.kind || ""}"><span class="lv">${r.level === "high" ? "高" : r.level === "medium" ? "中" : "低"}</span>${esc(r.warning)}</div>`).join("");
+  return `<div class="cre-card">
+    <div class="cre-head">
+      <div class="cre-type">${esc(c.type_zh || c.creative_type)}</div>
+      <div style="min-width:0"><h3>${esc(c.name)}</h3>
+        <div class="card-sub">面向 ${esc(c.audience || "—")} ·
+          ${ex.cost ? (ex.cost === "low" ? "低成本" : ex.cost === "medium" ? "中成本" : "高成本") : "成本未定"} ·
+          提前 ${ex.lead_time_hours || "?"}h
+          ${ex.window_missed ? pill("hot", "窗口已过") : ""}</div></div>
+      <div style="text-align:right">
+        ${c.kpi_target ? `<div class="kpi-val">${esc(c.kpi_target)}</div>
+          <div class="kpi-lab">目标（${esc(c.primary_metric || "")}）</div>` : ""}
+        ${pill("cool", c.hotspot?.game || c.hotspot?.platform || "")}</div>
+    </div>
+    ${ex.where ? `<div class="cre-where">📍 执行位置：${esc(ex.where)}${ex.owner ? " · 负责：" + esc(ex.owner) : ""}</div>` : ""}
+    ${steps ? `<div class="cre-steps"><b>怎么做</b><ol>${steps}</ol></div>` : ""}
+    ${cp.headline ? `<div class="cre-copy"><b>文案</b><div class="quote">${esc(cp.headline)}</div>
+       ${cp.push_title ? `<div class="push-t">Push 标题：${esc(cp.push_title)}</div>` : ""}</div>` : ""}
+    ${assets ? `<div class="cre-assets"><b>需要素材</b><div>${assets}</div></div>` : ""}
+    ${risks ? `<div class="cre-risks"><b>风险</b>${risks}</div>` : ""}
+    ${c.kpi_basis ? `<div class="cre-kpi">📐 目标依据：${esc(c.kpi_basis)}
+        <span class="hint">（参照值，非承诺）</span></div>` : ""}
+    ${c.kpi_note ? `<div class="cre-kpi warn">⚠ ${esc(c.kpi_note)}</div>` : ""}
+    ${(c.evidence || []).length ? `<div class="cre-src">依据：${c.evidence.map(esc).join(" ／ ")}</div>` : ""}
+  </div>`;
+}
+
+/* ============ 数据源（L1 采集层全貌） ============ */
+async function loadSources() {
+  const [d] = await Promise.all([api("/sources"), loadCrawlConfig()]);
+  const t = d.totals || {};
+  const pair = d.pairing || [];
+  const pairTot = pair.reduce((s, p) => s + p.total, 0);
+  const pairCov = pair.reduce((s, p) => s + p.covered, 0);
+  $("src-stats").innerHTML =
+    stat(t.enabled || 0, "启用源", "hl") +
+    stat(t.registered || 0, "已注册") +
+    stat(num(t.content || 0), "入库内容") +
+    stat(num(t.post_like || 0), "帖子/视频") +
+    stat(num(t.comment || 0), "评论") +
+    stat(pairTot ? Math.round(pairCov / pairTot * 100) + "%" : "—", "配对覆盖", "warn");
+
+  const gi = d.game_index || {};
+  $("src-gameindex").innerHTML = gi.covered ? `
+    <div class="item"><div class="item-main">
+      <div class="item-title">已索引 ${num(gi.total)} 个游戏社区，其中 ${num(gi.addressable)} 个可直接寻址</div>
+      <div class="item-sub">app_id → group_id 是 S2 进社区抓帖子的门牌号；接口声明全量 2208，
+        无翻页权限时深翻上限约 1016（from ≥ 1010 返回 400）</div>
+    </div></div>
+    <div class="gi-table">
+      <div class="trow head grow"><span>社区</span><span>app_id</span><span>group_id</span><span>关注</span><span>帖子</span><span>近期</span><span>官方</span></div>
+      ${(gi.top || []).map((g) => `<div class="trow grow">
+        <span class="tname">${esc(g.title)}</span><span>${esc(g.app_id)}</span>
+        <span>${esc(g.group_id)}</span><span>${num(g.fav)}</span>
+        <span>${num(g.topics)}</span><span>${num(g.recent)}</span>
+        <span>${num(g.official)}</span></div>`).join("")}
+    </div>` : `<div class="empty">还没有 S1 社区索引<br>跑一次社区爬虫即可生成</div>`;
+
+  const th = Object.entries(d.threads || {});
+  $("src-threads").innerHTML = th.length ? th.map(([label, t]) => {
+    const cov = t.total ? Math.round(t.comment_covered / t.total * 100) : 0;
+    const grow = (t.growing || []).map((g) =>
+      `<div class="crep-act"><span>▲</span>${esc(g.title)} <b class="hot-delta">+${g.delta} 评论</b>
+        <span class="hint">（现 ${num(g.comments)}）</span></div>`).join("");
+    return `<div class="item"><div class="item-main">
+      <div class="item-title">${esc(label)}</div>
+      <div class="item-sub">${num(t.total)} 个 thread · 在监测 ${num(t.active)} · 计数快照 ${num(t.snapshots)} 条
+        · 评论 ${num(t.comments)} 条（覆盖 ${cov}% 的 thread）</div>
+      ${grow ? `<div class="grow-box">${grow}</div>` : `<div class="item-sub" style="margin-top:4px">本轮没有计数增长的 thread</div>`}
+    </div></div>`;
+  }).join("") : `<div class="empty">还没有 thread 监测数据<br>跑一次社区/发现流爬虫即可</div>`;
+
+  $("src-table").innerHTML =
+    `<div class="trow head srow"><span>状态</span><span>采集源</span><span>抓什么</span><span>入库</span><span>类型</span><span>最近运行</span></div>` +
+    (d.sources || []).map((s) => {
+      const run = s.last_run;
+      const runTxt = run ? `${(run.started_at || "").slice(5, 16).replace("T", " ")} · ${run.records ?? 0} 条`
+                         : "从未运行";
+      const types = Object.entries(s.types || {}).map(([k, v]) => `${k} ${v}`).join(" / ") || "—";
+      return `<div class="trow srow">
+        <span>${pill(s.enabled ? "good" : "cool", s.enabled ? "启用" : "停用")}</span>
+        <span class="tname">${esc(s.name)}<i class="src-id">${esc(s.source_id)} · ${esc(s.platform)}</i></span>
+        <span class="tname">${esc(s.dataset || "—")}</span>
+        <span>${num(s.ingested)}</span>
+        <span class="tname">${esc(types)}</span>
+        <span class="tname">${esc(runTxt)}</span></div>`;
+    }).join("") || `<div class="empty">还没有注册的采集源</div>`;
+
+  $("src-pairing").innerHTML = pair.map((p) => {
+    const ratio = p.covered / (p.total || 1);
+    return `<div class="brow"><span class="bl">${esc(p.label)}</span>
+      <span class="bt"><i style="--w:${Math.max(2, ratio * 100)}%;background:${ratio < 0.5 ? "var(--rd)" : "var(--gn)"}"></i></span>
+      <span class="bv">${p.covered}/${p.total}</span></div>`;
+  }).join("");
+  const cov = t.comment_with_parent || 0, cmt = t.comment || 0;
+  $("src-pair-note").innerHTML =
+    `评论必须挂在产生它的帖子/视频上（parent_id），否则答不了"这个帖子下面大家在吵什么"。` +
+    `当前入库的 <b>${num(cmt)}</b> 条评论里，parent_id 非空的只有 <b>${num(cov)}</b> 条 —— ` +
+    `评论在入库时没有连回帖子，且原始抓取的评论覆盖率也低（上面红条）。` +
+    `这是第一层优化的第一刀：①抓取时逐帖/逐视频配对拉评论；②入库时把 parent_id 贯通。`;
+
+  $("src-runs").innerHTML = (d.crawl_runs || []).map((r) =>
+    `<div class="item"><div class="item-main">
+      <div class="item-title">${esc(r.source_id)} · ${r.records ?? 0} 条</div>
+      <div class="item-sub">${esc((r.started_at || "").slice(0, 19).replace("T", " "))}${r.error_type ? " · " + esc(r.error_type) : ""}</div></div>
+      ${pill(r.status === "ok" ? "good" : "hot", esc(r.status || "—"))}</div>`).join("")
+    || `<div class="empty">还没有运行记录</div>`;
+}
+
 /* ============ 趋势分析 ============ */
 async function loadTrend() {
-  await loadToday();
+  const feed = await api("/feed?limit=40");
+  S.cards = feed.cards || [];
   const all = S.cards;
   // 热度分布：分档
   const buckets = [
@@ -511,7 +680,7 @@ async function saveOps() {
 }
 
 /* ============ 路由与启动 ============ */
-const PAGES = { today: loadToday, trend: loadTrend, exec: loadExec, memory: loadMemory };
+const PAGES = { today: loadToday, creatives: loadCreatives, sources: loadSources, trend: loadTrend, exec: loadExec, memory: loadMemory };
 async function refreshAll() {
   try {
     for (const k of ["today", "exec"]) await PAGES[k]();
@@ -567,6 +736,11 @@ $("setpanel").onclick = (e) => { if (e.target.id === "setpanel") $("setpanel").c
 $("set-save").onclick = saveOps;
 $("btn-logout").onclick = () => { sessionStorage.clear(); location.reload(); };
 $("btn-refresh-exec").onclick = () => loadExec().catch((e) => toast(e.message, "err"));
+$("btn-refresh-today").onclick = () => loadToday(true).catch((e) => toast(e.message, "err"));
+$("btn-refresh-creatives").onclick = () => loadCreatives().catch((e) => toast(e.message, "err"));
+$("btn-refresh-sources").onclick = () => loadSources().catch((e) => toast(e.message, "err"));
+$("btn-save-cfg").onclick = () => saveCrawlConfig(false);
+$("btn-reset-cfg").onclick = () => saveCrawlConfig(true);
 $("btn-refresh-mem").onclick = () => loadMemory().catch((e) => toast(e.message, "err"));
 $("mem-go").onclick = doMemorySearch;
 $("mem-q").addEventListener("keydown", (e) => { if (e.key === "Enter") doMemorySearch(); });

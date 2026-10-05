@@ -70,6 +70,40 @@ def get_feed(limit: int = 50, user: Dict[str, Any] = Depends(current_user)):
     return S.feed(limit=limit)
 
 
+@app.get("/api/communities")
+def get_communities(refresh: int = 0, user: Dict[str, Any] = Depends(current_user)):
+    """L3 图社区检测 + L4 报告生成的社区报告列表（首页主列表）。"""
+    return S.communities(refresh=bool(refresh))
+
+
+@app.get("/api/communities/raw")
+def get_communities_raw(user: Dict[str, Any] = Depends(current_user)):
+    """L3 meta 里的原始社区数据（不含 L4 叙事，调试用）。"""
+    return S.communities_raw()
+
+
+@app.get("/api/crawl-config")
+def get_crawl_config(user: Dict[str, Any] = Depends(current_user)):
+    """采集参数（前端可调，落盘后爬虫下次运行自动生效）。"""
+    return S.crawl_config()
+
+
+@app.post("/api/crawl-config")
+def set_crawl_config(body: Dict[str, Any], user: Dict[str, Any] = Depends(current_user)):
+    """改采集参数。运维权限（require_role → 403）。"""
+    from execution.audit import require_role
+    require_role(user["role"], "configure")
+    out = S.save_crawl_config(body.get("values") or body)
+    S.broadcast(user["actor"], "crawl_config")
+    return out
+
+
+@app.get("/api/sources")
+def get_sources(user: Dict[str, Any] = Depends(current_user)):
+    """第一层（采集层）全貌：源注册表、入库统计、采集运行、配对诊断。"""
+    return S.sources()
+
+
 @app.get("/api/events/{event_id}/workspace")
 def get_workspace(event_id: str, user: Dict[str, Any] = Depends(current_user)):
     out = S.workspace(event_id)
@@ -195,6 +229,16 @@ def assign(object_type: str, object_id: str, body: AssignBody,
 
 class AssetBody(BaseModel):
     kinds: Optional[List[str]] = None
+
+
+@app.get("/api/growth-creatives")
+def get_growth_creatives(user: Dict[str, Any] = Depends(current_user)):
+    """结构化增长创意（热点→创意产出）+ 外部热点形成情况。
+
+    ★ 路径不叫 /api/creatives —— 那个前缀已被 L6 的创意工作流占用
+      （/api/creatives/{idea_id}/assets 等），避免路由冲突。
+    """
+    return S.growth_creatives()
 
 
 @app.post("/api/creatives/{idea_id}/assets")
