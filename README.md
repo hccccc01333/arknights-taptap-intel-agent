@@ -1,174 +1,237 @@
-# 全网热点追踪 → TapTap 增长创意系统
+# taptap-hotspot-intel
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-323%20passing-34d399)
-![Status](https://img.shields.io/badge/状态-V1%20可用-38bd8f)
+> 面向游戏社区的 Agent 情报系统：**全网热点追踪 → 情报与素材 → 可落地的增长创意**。
+> 以 TapTap 为第一个接入平台。
 
-**AI 自动化情报与素材系统**：从全网捕捉正在形成的热点，判定它与 TapTap 社区的相关性，
-产出可直接执行的增长创意与素材清单。
-
-> **系统边界**：本系统**只负责产出** —— 情报报告、增长创意、素材清单。
-> 运营跟进、投放执行、效果验证在外部系统完成。
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![Tests](https://img.shields.io/badge/tests-323%20passing-34d399)](#开发)
+[![CI](https://img.shields.io/badge/CI-passing-4c1)](.github/workflows/ci.yml)
 
 ---
 
-## 它做什么
+## 为什么要它
+
+热点不是等出来的，是**追出来的**——它先在某个社区发酵，然后跨平台扩散，最后才进入大众视野。等到它上了热搜，通常已经过了窗口期。
+
+多数团队的做法是人工刷榜：运营每天早中晚各看一次热榜，用肉眼判断"这个能不能借"。问题是：
+
+- **看的是存量榜** —— 词上榜时讨论量通常已经过了峰值，看到时窗口已经关了一半
+- **噪音远大于信号** —— 全网热搜里 95% 和游戏无关，无法直接行动
+- **判断不可复用** —— 换个话题就要重新想一遍，很容易得出"正确但没法执行"的结论
+
+这个系统把这三件事交给 Agent：
 
 ```
-① 全网热点采集 → ② 热点识别/形成判定 → ③ 与 TapTap 相关性匹配 → ④ 筛选高价值 → ⑤ AI 生成创意/素材
+全网采集  →  形成中判定  →  相关性匹配  →  创意生成
+（多平台）    （只看正在出现）  （和 TapTap 有关）  （给出可执行动作）
 ```
-
-不只告诉你"这个话题热了"，而是进一步回答：
-
-- **这个热点和 TapTap 用户相关吗？** → 三档判定：`related`（进看板）/ `adjacent`（背景参考）/ `irrelevant`（丢弃）
-- **能转成拉新/促活/内容传播/下载吗？** → 增长机会 + 机制链（如 `热点 → 话题讨论 → 社区沉淀 → 长期活跃`）
-- **该做什么、什么时候做？** → 位置 + 步骤 + 文案 + 素材清单 + 风险 + 提前期 + KPI 目标
 
 ---
 
-## 当前能力
+## 它和"热榜聚合"的区别
 
-### 数据采集（L1）
-
-| 渠道 | 采什么 | 状态 |
+| | 热榜聚合 | 本系统 |
 |---|---|---|
-| **百度热搜**（综合） | 搜索意图，51 条/轮 | ✅ |
-| **百度游戏热搜** | **游戏专属榜 30 条/轮**（纯度最高） | ✅ |
-| **微博热搜** | 破圈话题，49 条/轮，带「新」标记 | ✅ |
-| **B站游戏区 + 热门** | 创作者生产，126 条/轮，播放增速 | ✅ |
-| **TapTap S1** | 2357 个游戏社区索引（app_id→group_id + 四要素） | ✅ |
-| **TapTap S2** | 单游戏帖子流 + 计数快照（thread 发现） | ✅ |
-| **TapTap S3** | 帖子评论（全量首抓 + 增量补，parent_id 贯通） | ✅ |
-| **TapTap S4/S5/S6** | 热榜（辅助）+ 发现流 + 话题帖 | ✅ |
-| **TapTap 评分区/公告** | 口碑信号 + 官方动作归因 | ✅ |
-| 抖音话题 / 贴吧 / 知乎 | — | ❌ 需登录态或风控严格 |
+| **输入** | 一个热榜列表 | 全网多渠道 + 站内社区 + 跨轮时间序列 |
+| **输出** | 「话题 X 排名第 3」 | 「X 值得做：位置在哪、几步做完、文案怎么写、素材要什么、多久内要做、有什么风险」 |
+| **判断者** | 人 | Agent（规则召回 + LLM 判定 + LLM 生成） |
+| **时效** | 榜单快照 | 只报 `forming`（正在形成），`peaking`/`fading` 的不报 |
+| **可执行性** | 需要人再想一遍 | 直接是执行清单 |
 
-**关键设计**：热榜是**存量榜**（词上榜时已过峰值），所以只报 `forming` 档（新进榜 / 在涨 / 排名升）。
+---
 
-### 分析与产出（L3/L4）
+## 产出长什么样
 
-| 能力 | 做什么 |
-|---|---|
-| **形成中判定** | 以采集时刻为锚点算发帖速率，四档：forming / rising / peaking / fading |
-| **三层相关性过滤** | 词表 117 词 → bge 语义召回 → LLM 三档判定 |
-| **跨平台事件合并** | 同一件事在多平台的重复上报合并成一个 Event（bge 召回 + LLM 判定） |
-| **事件图** | 站外热点 ↔ 站内话题 ↔ 游戏节点，含传播路径 |
-| **游戏标签库** | 2357 个游戏模糊匹配（含中点/别名），外部热点 → TapTap 社区寻址 |
-| **结构化创意生成** | 位置/步骤/文案/素材/风险/提前期/KPI，LLM 按类型逐条生成 |
-| **时效闸门** | 热点年龄 vs 创意提前期（Push 2h / 专题 4h / 厂商合作 72h），赶不上就标「窗口已过」 |
-| **KPI 基线** | 社区内容分位数（如互动率 P75 = 6.91%），标注「参照值，非承诺」 |
+一次运行会产出**结构化创意**，不是一段文字：
 
-### Agent 自主调度（V2）
+```jsonc
+{
+  "name": "鸣潮丹瑾支线悬天全配音补全-热点专题页",
+  "creative_type": "content",
+  "audience": "找攻略的核心玩家、剧情党玩家",
+
+  "execution": {
+    "where": "TapTap 鸣潮游戏页顶部 Banner 位 + 发现页专题池",
+    "steps": ["下载 B 站原视频并截取关键剧情时间轴", "做 1 张长图：官方原声 vs 补全版对照表", "…"],
+    "owner": "运营主导（文案/发布/置顶），设计配合",
+    "cost": "low",
+    "lead_time_hours": 4,
+    "window_missed": false          // 热点年龄 vs 提前期，赶不上会标 true
+  },
+
+  "copy": {
+    "headline": "丹瑾支线『悬天』原来藏着这么多没听过的台词？UP 主补全版配音上线",
+    "push_title": "…"               // Push 类型自动填
+  },
+
+  "assets": [                        // 素材清单
+    {"type": "image", "desc": "剧情时间轴长图", "source": "B 站原视频截帧"},
+    {"type": "video", "desc": "原视频授权片段", "source": "UP 主授权"}
+  ],
+
+  "primary_metric": "engagement_rate",
+  "kpi_target": "6.91%",
+  "kpi_basis": "互动率的社区 P75（n=323 篇社区帖）",
+  "risks": [                         // 风险不是"出事了"，是"这样做可能出事"
+    {"level": "medium", "warning": "UP 主授权风险：未获二创授权或商用可能引发版权投诉"}
+  ],
+  "evidence": ["热点:【鸣潮】丹瑾支线悬天全配音补全版本", "站内:鸣潮游戏专区-动态广场"]
+}
+```
+
+关键点：**`window_missed`、`kpi_basis`、`risks`、`evidence` 都是硬约束**，不是装饰。
+赶不上窗口会明说"KPI 是参照值不是承诺"，风险没想过就直说，而不是编一个。
+
+---
+
+## 核心设计取舍
+
+### 1. 只报"正在形成"的热点
+
+热榜是**存量榜**。系统以采集时刻为锚点算发帖速率，把榜上词分四档：
+
+| 阶段 | 判据 | 报不报 |
+|---|---|---|
+| `forming` | 刚进榜 / 热度在涨 / 排名在升 | ✅ **只报这档** |
+| `rising` | 在榜 > 90 分钟且仍在涨 | 供参考 |
+| `peaking` | 在榜 > 60 分钟且热度横盘 | ❌ 爆发已过 |
+| `fading` | 热度下滑 | ❌ |
+
+### 2. 相关性判定用三层，不是单点阈值
+
+```
+① 规则词表（117 词）→ 召回优先，宁多不漏
+② bge 语义召回 → 救回词表漏网的（崩铁/蛋仔/lol/绝区零…）
+③ LLM 三档判定 → related 进看板 / adjacent 背景参考 / irrelevant 丢弃
+```
+
+实测：253 条外部热点 → 4 个跨平台事件 → 7 条 related。
+
+### 3. 创意生成按类型逐条来
+
+一次问模型"给 5 条"会把 token 全花在第 1 条上。改成**一次只做一种类型**（专题 / 社区 / Push / 社媒…），每条都有完整预算，且类型不同天然动作不同。
+
+### 4. 时效闸门前置
+
+赶不上的创意**压根不生成** —— Push 只有 2 小时窗口，厂商合作要 72 小时。对一个已经火了三天的热点建议"厂商合作"是废话。
+
+### 5. Agent 自主调度（V2）
 
 Agent 每轮读完数据自己决定下一轮怎么采，规则可解释：
 
 ```
-信号：15 个帖评论增长≥10 → 评论预算翻倍
-信号：覆盖率 11% < 30%   → 增加评论页数
-输出：max_comment_calls 150→225, comment_pages_per_post 10→15
+信号：15 个帖评论增长≥10  →  评论预算 150→225
+信号：覆盖率 11% < 30%     →  评论页数 10→15
 ```
 
-每轮从**基准值**出发（不是上轮结果叠加，防复合膨胀）。
+每轮从**基准值**出发而不是上轮结果叠加 —— 否则会 120→270→405 复合膨胀。
+
+---
+
+## 系统边界
+
+**本系统只负责产出**：情报报告、增长创意、素材清单。
+
+运营跟进、投放执行、效果验证**在外部系统完成** —— 这个仓库不做审批流、不做实验引擎、不做报表。
 
 ---
 
 ## 快速开始
 
 ```bash
-# 1. 采集（单个渠道）
+git clone https://github.com/hccccc01333/taptap-hotspot-intel.git
+cd taptap-hotspot-intel
+pip install -r requirements.txt
+```
+
+### 采集
+
+```bash
+# 单轮
 python L1_data_source/collectors/baidu/crawl_baidu_hot.py --tabs realtime,game
-python L1_data_source/collectors/weibo/crawl_weibo_hot.py     # 需 WEIBO_COOKIE
+python L1_data_source/collectors/weibo/crawl_weibo_hot.py          # 需 WEIBO_COOKIE
 python L1_data_source/collectors/taptap/crawl_taptap_community.py --game arknights
 
-# 2. 常驻采集（每 10-15 分钟一轮）
-python -u L1_data_source/collectors/baidu/crawl_baidu_hot.py --watch --interval 600
-python -u L1_data_source/collectors/weibo/crawl_weibo_hot.py --watch --interval 600
-python -u L1_data_source/collectors/bilibili/crawl_bili_game_hot.py --watch --interval 900
-
-# 3. 入库 → 加工
-python L1_data_source/pipeline.py --once --all
-python L2_signal/processing/pipeline.py --run
-
-# 4. 分析 → 创意
-python L3_trend/forming_report.py            # 正在形成的热点
-python L3_trend/hotspot_filter.py            # 相关性三档判定
-python L3_trend/event_resolver.py            # 跨平台事件合并
-python L4_intelligence/intelligence/hotspot_to_creative.py   # 结构化创意
-
-# 5. Agent 自主调参
-python L3_trend/strategy.py                  # 决定下轮参数
-python L3_trend/feedback.py                  # 评估上轮效果
-
-# 6. Webapp（社区报告 / 增长创意 / 数据源）
-python -m uvicorn webapp.main:app --port 8200    # 演示密码 demo
+# 常驻（推荐，每 10~15 分钟一轮）
+python -u L1_data_source/collectors/baidu/crawl_baidu_hot.py --watch --interval 600 &
+python -u L1_data_source/collectors/weibo/crawl_weibo_hot.py  --watch --interval 600 &
+python -u L1_data_source/collectors/bilibili/crawl_bili_game_hot.py --watch --interval 900 &
 ```
+
+### 入库 → 分析 → 产出
+
+```bash
+python L1_data_source/pipeline.py --once --all          # 入库
+python L2_signal/processing/pipeline.py --run           # 清洗
+
+python L3_trend/forming_report.py                       # 正在形成的热点
+python L3_trend/hotspot_filter.py                       # 相关性三档
+python L3_trend/event_resolver.py                       # 跨平台事件合并
+python L4_intelligence/intelligence/hotspot_to_creative.py   # 创意生成
+
+python L3_trend/strategy.py                             # Agent 决定下轮参数
+python L3_trend/feedback.py                             # 评估上轮效果
+```
+
+### Web 界面
+
+```bash
+python -m uvicorn webapp.main:app --port 8200     # 演示密码 demo
+```
+
+三个页面：**社区报告**（热点情报）· **增长创意**（可执行动作）· **数据源**（采集状态 + 参数面板）
 
 ---
 
-## 配置
+## 渠道接入状态
 
-### 登录态 Cookie（可选，不填也能跑）
-
-```bash
-# 各平台的 .env 已在 .gitignore 保护下
-L1_data_source/collectors/taptap/.env    # TAPTAP_X_UA（必需）+ TAPTAP_COOKIE（可选，深翻用）
-L1_data_source/collectors/weibo/.env     # WEIBO_COOKIE
-L1_data_source/collectors/douyin/.env    # DOUYIN_COOKIE
-L1_data_source/collectors/baidu/.env     # BAIDU_COOKIE
-```
-
-### 采集参数（前端可调，落盘 `data/state/crawl_config.json`）
-
-| 参数 | 默认 | 作用 |
+| 渠道 | 拿什么 | 状态 |
 |---|---|---|
-| `fresh_hours` | 72 | 新帖窗口：只收最近 N 小时发布的帖 |
-| `max_pages` | 12 | 每轮翻页深度 |
-| `max_comment_calls` | 150 | 每轮评论接口预算 |
-| `comment_pages_per_post` | 10 | 新帖评论抓全页数（每页 20 条） |
-| `max_age_days` | 14 | 超期且无增长的帖子停止监测 |
-| `hot_ups_threshold` | 30 | 点赞阈值：达到就抓全评论 + 重点监测 |
+| 百度热搜 · 综合 | 搜索意图 | ✅ 51 条/轮 |
+| **百度热搜 · 游戏** | **游戏专属榜（纯度最高）** | ✅ 30 条/轮 |
+| 微博热搜 | 破圈话题 + 在榜「新」标记 | ✅ 49 条/轮 |
+| B站游戏区 + 热门 | 创作者生产 + 播放增速 | ✅ 126 条/轮 |
+| TapTap S1 | 2357 个游戏社区索引 | ✅ |
+| TapTap S2/S3 | 帖子流 + 评论（thread 监测） | ✅ |
+| 抖音话题 / 贴吧 / 知乎 | — | ❌ 登录态 / 风控 |
+
+站内数据（TapTap）用于**验证**（热点传导到社区了吗）和**语境补充**，
+不作为创意生成的前置条件 —— 一个鸣潮的热点即使站内还没讨论，也照样能出创意。
+
+---
+
+## 已知边界
+
+- `topic_count`（社区累计帖数）有缓存延迟 → 只能测**小时级**增长，不是分钟级
+- 推荐流有马太效应（热帖反复推、冷帖被推走）→ 采集样本有偏
+- 百度热搜是**搜索意图**，不等于讨论热度
+- 微博无公开趋势指数 → 用跨轮变化率代替
+- 免费模型结构化输出有条数上限（8 条/次），已做自适应拆分
+- 深度分析用的 DeepSeek key 余额不足（HTTP 402），当前走 OpenRouter 免费模型
 
 ---
 
 ## 项目结构
 
 ```
-L1_data_source/          采集层：各平台爬虫 + 注册表 + 事件总线
-L2_signal/               加工层：清洗、去重、质量闸门、实体
-L3_trend/                趋势层
-  ├── thread_feed.py     S3 响应式服务（LLM 按需调）
-  ├── forming.py         形成中判定（四档）
-  ├── hotspot_filter.py  三层相关性过滤
-  ├── event_resolver.py  跨平台事件合并
-  ├── event_graph.py     事件图
-  ├── game_tags.py       游戏标签库
-  ├── kpi_baseline.py    KPI 基线
-  ├── strategy.py        Agent 采集策略（V2）
-  └── feedback.py        策略效果回溯
-L4_intelligence/         情报层：LLM 报告 + 增长创意
-L5_memory/               记忆层（保留，不在主链路）
-L6_execution/            执行层（保留，运营在外部系统做）
-webapp/                  Web 界面：社区报告 / 增长创意 / 数据源
-docs/                    架构设计文档
+L1_data_source/     采集：各平台爬虫 + 源注册表 + 事件总线
+L2_signal/          加工：清洗、去重、质量闸门
+L3_trend/           趋势
+  ├─ forming.py         形成中判定
+  ├─ hotspot_filter.py  三层相关性过滤
+  ├─ event_resolver.py  跨平台事件合并
+  ├─ event_graph.py     事件图
+  ├─ game_tags.py       游戏标签库（2357 社区寻址）
+  ├─ thread_feed.py     评论响应式服务
+  ├─ kpi_baseline.py    KPI 基线
+  ├─ strategy.py        Agent 采集策略（V2）
+  └─ feedback.py        策略效果回溯
+L4_intelligence/    情报：LLM 报告 + 增长创意
+webapp/             Web：社区报告 / 增长创意 / 数据源
+docs/               架构设计
 ```
 
----
-
-## 设计文档
-
-- [AI 情报系统架构](docs/AI情报系统架构.md) —— Agent + 工具 + 记忆 + 调度，含 V2 自主控制设计
-- [热点检测架构](docs/热点检测架构设计.md) —— LLM + GraphRAG 地基、A-E 五类热点信号
-
----
-
-## 已知边界
-
-- `topic_count`（社区累计帖数）有缓存延迟 → 只能测小时级增长
-- 推荐流有马太效应（热帖反复出现、冷帖被推走）→ 采集样本有偏
-- 百度热搜是**搜索意图**，不是讨论热度
-- 微博无公开趋势指数 → 用跨轮变化率代替
-- 抖音话题 / 贴吧 / 知乎未接入（登录态/风控）
-- 免费模型结构化输出有条数上限（8 条/次）
+设计文档：[AI 情报系统架构](docs/AI情报系统架构.md) · [热点检测架构](docs/热点检测架构设计.md)
 
 ---
 
@@ -178,9 +241,11 @@ docs/                    架构设计文档
 python -m unittest discover -s L3_trend/tests -p "test_*.py"
 python -m unittest discover -s L4_intelligence/tests -p "test_*.py"
 python -m unittest discover -s runtime/tests -p "test_*.py"
-# ...共 7 层，323 个测试
+# 共 7 层 323 个测试，CI 全绿
 ```
 
-## 许可证
+---
 
-[MIT License](./LICENSE)
+## License
+
+[MIT](./LICENSE)
