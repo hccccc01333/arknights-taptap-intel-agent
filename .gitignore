@@ -13,6 +13,10 @@ env/
 # Secrets
 .env
 **/.env
+.env.*
+**/.env.*
+!.env.example
+!**/.env.example
 *.pem
 *.key
 
@@ -143,3 +147,13 @@ spatial/node_modules/
 spatial/.next/
 spatial/dist/
 data/_archive/
+
+# V2 runtime evidence, model traces and deliverables remain local.
+data/v2/
+
+# V3 candidate ledger, material library and growth packs are local runtime data.
+data/v3/
+
+# Python package entry points are source files, not underscore-prefixed probes.
+!**/__init__.py
+!**/__main__.py

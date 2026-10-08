@@ -56,10 +56,16 @@ function toast(msg, kind) {
 async function loadToday(refresh) {
   const d = await api("/communities" + (refresh ? "?refresh=1" : ""));
   const reports = d.reports || [];
+  const health = d.pipeline_health;
+  const outdated = health?.status === "degraded";
+  $("today-health").classList.toggle("hidden", !outdated);
+  $("today-health").innerHTML = outdated
+    ? `<b>部分情报缺少近期数据，请核查后使用。</b><details><summary>查看各层数据时间</summary><ul>${(health.warnings || []).map(message => `<li>${esc(message)}</li>`).join("")}</ul><p>${esc(health.note)}</p></details>` : "";
   const totalEv = reports.reduce((s, r) => s + (r.n_events || 0), 0);
   const totalCt = reports.reduce((s, r) => s + (r.total_content || 0), 0);
 
-  $("today-title").textContent = reports.length ? "这些社群正在讨论什么" : "还没有社区报告";
+  $("today-title").textContent = reports.length
+    ? (outdated ? "已有社区报告（数据时效待核查）" : "这些社群正在讨论什么") : "还没有社区报告";
   $("today-sub").textContent = reports.length
     ? "话题按实体共现聚成讨论社群，一份报告 = 一个社群的来龙去脉。点话题可展开单条详情。"
     : "先跑一轮 L3 趋势引擎，话题聚成社群后这里就会出现报告。";
@@ -391,6 +397,11 @@ async function saveCrawlConfig(reset) {
 /* ============ 增长创意（结构化 schema 渲染） ============ */
 async function loadCreatives() {
   const d = await api("/growth-creatives");
+  const health = d.pipeline_health;
+  const outdated = health?.status === "degraded";
+  $("cre-health").classList.toggle("hidden", !outdated);
+  $("cre-health").innerHTML = outdated
+    ? `<b>创意或上游情报的时效待核查。</b><details><summary>查看各层数据时间</summary><ul>${(health.warnings || []).map(message => `<li>${esc(message)}</li>`).join("")}</ul></details>` : "";
   const cs = d.creatives || [];
   const chans = d.channels || {};
   $("cre-stats").innerHTML =
@@ -630,7 +641,7 @@ async function saveOps() {
 const PAGES = { today: loadToday, creatives: loadCreatives, sources: loadSources, trend: loadTrend };
 async function refreshAll() {
   try {
-    for (const k of ["today", "exec"]) await PAGES[k]();
+    await PAGES[S.tab]();
   } catch (e) { console.warn(e); }
 }
 function switchTab(name) {
@@ -682,15 +693,11 @@ $("btn-me").onclick = () => $("setpanel").classList.toggle("hidden");
 $("setpanel").onclick = (e) => { if (e.target.id === "setpanel") $("setpanel").classList.add("hidden"); };
 $("set-save").onclick = saveOps;
 $("btn-logout").onclick = () => { sessionStorage.clear(); location.reload(); };
-$("btn-refresh-exec-unused").onclick = () => loadExec().catch((e) => toast(e.message, "err"));
 $("btn-refresh-today").onclick = () => loadToday(true).catch((e) => toast(e.message, "err"));
 $("btn-refresh-creatives").onclick = () => loadCreatives().catch((e) => toast(e.message, "err"));
 $("btn-refresh-sources").onclick = () => loadSources().catch((e) => toast(e.message, "err"));
 $("btn-save-cfg").onclick = () => saveCrawlConfig(false);
 $("btn-reset-cfg").onclick = () => saveCrawlConfig(true);
-$("btn-refresh-mem-unused").onclick = () => loadMemory().catch((e) => toast(e.message, "err"));
-$("mem-go").onclick = doMemorySearch;
-$("mem-q").addEventListener("keydown", (e) => { if (e.key === "Enter") doMemorySearch(); });
 $("drawer").addEventListener("click", (e) => {
   if (e.target.id === "drawer" || e.target.classList.contains("d-back")) closeDrawer();
 });

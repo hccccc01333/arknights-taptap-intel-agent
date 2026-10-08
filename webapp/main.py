@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -26,7 +28,20 @@ from pydantic import BaseModel
 import webapp.services as S
 from webapp.auth import issue_token, parse_token, verify_login
 
-app = FastAPI(title="Growth Intelligence OS", version=S.WEBAPP_VERSION)
+@asynccontextmanager
+async def lifespan(app):
+    from agent_v2.service import start_scheduler, stop_scheduler
+    from agent_v3 import service as v3_service
+    start_scheduler()
+    v3_service.start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
+        v3_service.stop_scheduler()
+
+
+app = FastAPI(title="Growth Intelligence OS", version=S.WEBAPP_VERSION, lifespan=lifespan)
 
 # Opt in to requests from a separately hosted frontend (for example Pages).
 # Local Vite proxy works without CORS; no origins are enabled by default.
@@ -40,6 +55,10 @@ if _FRONTEND_ORIGINS:
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+class V2ModelBody(BaseModel):
+    model: str
+
 
 # A separately hosted frontend (for example GitHub Pages) can opt into CORS.
 # Leave it disabled by default; the local Vite proxy works without CORS.
@@ -109,6 +128,138 @@ def get_communities_raw(user: Dict[str, Any] = Depends(current_user)):
     return S.communities_raw()
 
 
+@app.get("/api/pipeline-health")
+def get_pipeline_health(user: Dict[str, Any] = Depends(current_user)):
+    """Read-only watermarks; a successful HTTP request does not renew the data."""
+    return S.pipeline_health()
+
+
+@app.get("/api/v2/overview")
+def v2_overview(user: Dict[str, Any] = Depends(current_user)):
+    from agent_v2 import service
+    return service.overview()
+
+
+@app.get("/api/v2/candidates")
+def v2_candidates(q: str = "", user: Dict[str, Any] = Depends(current_user)):
+    from agent_v2 import service
+    return service.candidates(q[:100])
+
+
+def v2_operator(user: Dict[str, Any]):
+    if user.get("role") not in ("operator", "admin"):
+        raise HTTPException(403, "启动研究或导入数据需要运营或管理员角色")
+
+
+@app.post("/api/v2/ingest")
+def v2_ingest(user: Dict[str, Any] = Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.import_sources()
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+class V2ResearchBody(BaseModel):
+    task: str
+    collect_live: bool = True
+
+
+@app.post("/api/v2/runs")
+def v2_start(body: V2ResearchBody, user: Dict[str, Any] = Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.start_run(body.task,body.collect_live)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@app.get("/api/v2/runs/{run_id}")
+def v2_run(run_id: str, user: Dict[str, Any] = Depends(current_user)):
+    from agent_v2 import service
+    result = service.get_run(run_id)
+    if result is None:
+        raise HTTPException(404, "研究运行不存在")
+    return result
+
+
+@app.get("/api/v2/events/{event_id}")
+def v2_event(event_id: str, user: Dict[str, Any] = Depends(current_user)):
+    from agent_v2 import service
+    result = service.get_event(event_id)
+    if result is None:
+        raise HTTPException(404, "事件不存在")
+    return result
+
+
+@app.post("/api/v2/collection")
+def v2_collect(user: Dict[str, Any] = Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.start_run("采集当前渠道最新公开线索",True,True)
+    except ValueError as error:
+        raise HTTPException(409,str(error)) from error
+
+
+@app.get("/api/v2/brief")
+def v2_brief(days: int=7, user: Dict[str, Any] = Depends(current_user)):
+    from agent_v2 import service
+    try:
+        return service.get_brief(days)
+    except ValueError as error:
+        raise HTTPException(400,str(error)) from error
+
+
+class V2FeedbackBody(BaseModel):
+    creative_id: str
+    decision: str
+    reason: str
+    outcome: Dict[str,Any] = {}
+
+
+@app.post("/api/v2/feedback")
+def v2_feedback(body: V2FeedbackBody,user: Dict[str,Any]=Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.save_feedback(body.creative_id,user["actor"],body.decision,body.reason,body.outcome)
+    except ValueError as error:
+        raise HTTPException(400,str(error)) from error
+
+
+@app.post("/api/v2/context")
+def v2_context(body: Dict[str,Any],user: Dict[str,Any]=Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.business_context(body)
+    except ValueError as error:
+        raise HTTPException(400,str(error)) from error
+
+
+@app.post("/api/v2/schedule")
+def v2_schedule(body: Dict[str,Any],user: Dict[str,Any]=Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.save_schedule(body)
+    except ValueError as error:
+        raise HTTPException(400,str(error)) from error
+
+
+@app.post("/api/v2/model")
+def v2_model(body: V2ModelBody,user: Dict[str,Any]=Depends(current_user)):
+    v2_operator(user)
+    from agent_v2 import service
+    try:
+        return service.select_model(body.model)
+    except ValueError as error:
+        raise HTTPException(400,str(error)) from error
+
+
 @app.get("/api/crawl-config")
 def get_crawl_config(user: Dict[str, Any] = Depends(current_user)):
     """采集参数（前端可调，落盘后爬虫下次运行自动生效）。"""
@@ -133,9 +284,21 @@ def get_sources(user: Dict[str, Any] = Depends(current_user)):
 
 @app.get("/api/events/{event_id}/workspace")
 def get_workspace(event_id: str, user: Dict[str, Any] = Depends(current_user)):
+    if event_id.startswith("forming:"):
+        import webapp.universe as U
+        out = U.forming_workspace(event_id)
+        if out is not None:
+            return out
+        raise HTTPException(404, f"forming 信号已过期：{event_id}")
     out = S.workspace(event_id)
     if out is None:
         raise HTTPException(404, f"事件不存在：{event_id}")
+    # ★ 汇聚证据（2026-10-07）：热点是几十条内容的汇聚——L4 老工作区的
+    #   evidence_panel 为空时，把 event_content 关联的真实内容摊开。
+    import webapp.universe as U
+    ep = out.get("evidence_panel") or {}
+    if not (ep.get("facts") or ep.get("community")):
+        out["evidence"] = U._event_evidence(event_id)
     return out
 
 
@@ -194,7 +357,9 @@ def get_alerts(user: Dict[str, Any] = Depends(current_user)):
 def get_universe(limit: int = 240, user: Dict[str, Any] = Depends(current_user)):
     """Universe 数据（设计 §C：映射规则的唯一真源在 webapp/universe.py）。"""
     import webapp.universe as U
-    return U.build_universe(limit=limit)
+    result = U.build_universe(limit=limit)
+    result["pipelineHealth"] = S.pipeline_health()
+    return result
 
 
 @app.get("/api/funnel")
@@ -428,6 +593,9 @@ async def ws_endpoint(ws: WebSocket):
 
 
 # ---------------------------------------------------------------- 静态前端
+
+from agent_v3.api import router as v3_router
+app.include_router(v3_router(current_user))
 
 _STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app.mount("/", StaticFiles(directory=_STATIC, html=True), name="static")

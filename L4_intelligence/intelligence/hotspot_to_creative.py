@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -39,6 +40,7 @@ for _p in (_L4, _ROOT, os.path.join(_ROOT, "L3_trend"),
 RELEVANCE_JSON = os.path.join(_ROOT, "data", "state", "hotspot_relevance.json")
 EVENTS_JSON = os.path.join(_ROOT, "data", "state", "hot_events.json")
 THREADS_JSON = os.path.join(_ROOT, "data", "state", "community_reports.json")
+CREATIVES_JSON = os.path.join(_ROOT, "data", "state", "growth_creatives.json")
 
 
 # 游戏识别（归因用）：从 games/*.json 拿 name/aliases，粗粒度足够
@@ -248,7 +250,8 @@ def normalize_creative(raw: Dict[str, Any], hot: Dict[str, Any],
       （比如 kpi_target 宁可空着，运营自己填，也不要 LLM 编一个数）。
     """
     c = _empty_creative()
-    c["idea_id"] = f"hc_{abs(hash((hot.get('id') or '') + ctype)) % 10**8}"
+    identity = str(hot.get("id") or f"{hot.get('platform', '')}|{hot.get('title', '')}")
+    c["idea_id"] = "hc_" + hashlib.sha256(f"{identity}|{ctype}".encode("utf-8")).hexdigest()[:16]
     c["name"] = str(raw.get("name") or raw.get("idea_name") or "").strip()[:60]
     c["creative_type"] = str(raw.get("creative_type") or ctype or "content").strip()
     c["audience"] = str(raw.get("audience") or "").strip()[:40]
@@ -511,9 +514,48 @@ def run_one(hot: Dict[str, Any], events: List[Dict[str, Any]],
     }
 
 
+def persist_creatives(creatives: List[Dict[str, Any]], output_path: Optional[str] = None) -> Dict[str, Any]:
+    """Publish only grounded model drafts to the artifact consumed by the web UI.
+
+    A failed model call must not erase the last successful deliverable or publish
+    rule proposals as model results. Historical files remain untouched on an
+    empty or invalid batch.
+    """
+    accepted: List[Dict[str, Any]] = []
+    seen = set()
+    for creative in creatives:
+        ex = creative.get("execution") or {}
+        evidence = creative.get("evidence")
+        steps = ex.get("steps") if isinstance(ex, dict) else None
+        if (creative.get("generated_by") != "llm" or not creative.get("idea_id")
+                or not str(creative.get("name") or "").strip()
+                or not isinstance(ex, dict) or not str(ex.get("where") or "").strip()
+                or not isinstance(steps, list) or not any(isinstance(s, str) and s.strip() for s in steps)
+                or not isinstance(evidence, list)
+                or not any(isinstance(e, str) and e.strip() for e in evidence)):
+            continue
+        if creative["idea_id"] in seen:
+            continue
+        seen.add(creative["idea_id"])
+        accepted.append({**creative, "review_status": "unreviewed"})
+    if not accepted:
+        raise ValueError("未生成包含来源、执行位置和步骤的模型创意；保留已有创意文件")
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    data = {"generated_at": generated_at, "creatives": accepted,
+            "meta": {"status": "draft", "generated_count": len(accepted),
+                     "rejected_count": len(creatives) - len(accepted),
+                     "note": "模型生成草案，需核查证据、素材授权与可执行性；不代表已验证增长。"}}
+    path = output_path or CREATIVES_JSON
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2)
+    return data
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="端到端验证：外部热点 → 增长创意")
     ap.add_argument("--top", type=int, default=3, help="跑前几个 related 热点")
+    ap.add_argument("--output", default=None, help="输出创意 JSON；默认供 Web 增长创意页读取")
     args = ap.parse_args()
 
     # 优先走「事件」：跨平台合并后的事件；没有就退回单热点
@@ -524,7 +566,7 @@ def main() -> int:
         print("[skip] 没有可用的热点/事件。顺序："
               "① L3_trend/event_resolver.py（跨平台合并）"
               " ② L3_trend/hotspot_filter.py（相关性判定）")
-        return 0
+        return 1
 
     # 每个热点配 TapTap 站内语境（用社区报告里的相关话题）
     ctx_events: List[Dict[str, Any]] = []
@@ -533,6 +575,7 @@ def main() -> int:
             for rep in (json.load(f).get("reports") or []):
                 ctx_events.extend(rep.get("events") or [])
 
+    all_creatives: List[Dict[str, Any]] = []
     print(f"拿 {len(units)} 个{unit_label}跑 →机会→创意\n")
     for i, raw_unit in enumerate(units, 1):
         hot = _event_as_hotspot(raw_unit) if events else raw_unit
@@ -569,6 +612,7 @@ def main() -> int:
             if h:
                 print(f"   假设：{str(h)[:66]}")
         lcs = r.get("llm_creatives") or []
+        all_creatives.extend(lcs)
         if lcs:
             print(f"   → LLM 结构化创意 {len(lcs)} 条：")
             for c in lcs:
@@ -590,6 +634,12 @@ def main() -> int:
         else:
             print("   （LLM 不可用，以上为规则版本）")
         print(f"   团队约束：资源={r['ops_context']['resources']} 预算={r['ops_context']['budget']}")
+    try:
+        output = persist_creatives(all_creatives, args.output)
+    except (ValueError, OSError) as error:
+        print(f"[failed] {error}", file=sys.stderr)
+        return 1
+    print(f"\n已保存 {len(output['creatives'])} 条模型创意草案 → {args.output or CREATIVES_JSON}")
     return 0
 
 

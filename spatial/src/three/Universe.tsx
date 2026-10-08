@@ -158,9 +158,9 @@ function PipeLine({ from, to, on }: { from: THREE.Vector3; to: THREE.Vector3; on
   });
   return (
     <>
-      <line geometry={geo}>
+      <primitive object={new THREE.Line(geo)}>
         <lineBasicMaterial ref={mat} color={T.color.tapDim} transparent opacity={0.2} />
-      </line>
+      </primitive>
       <mesh ref={dot} visible={on}>
         <boxGeometry args={[0.5, 0.5, 0.5]} />
         <meshBasicMaterial color={T.color.tap} />

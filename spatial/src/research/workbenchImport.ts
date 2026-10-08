@@ -1,0 +1,2 @@
+import type { Operation } from './operations';
+export function forkOperationIds(operations:Operation[],sessionId:string){return operations.map(o=>({...structuredClone(o),id:crypto.randomUUID(),opportunityKey:sessionId+'|import:'+crypto.randomUUID(),proposalKey:o.proposalKey||o.handoff?.records.flatMap(r=>[r.topic.id+'|discovery',r.topic.id+'|participation']).find(key=>o.opportunityKey.includes(key)),history:[...o.history,{id:crypto.randomUUID(),at:new Date().toISOString(),text:'从档案导入为独立行动，原记录保留。'}].slice(-100)}));}

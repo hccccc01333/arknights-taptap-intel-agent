@@ -77,6 +77,11 @@ def reset_state() -> None:
 
 
 # ---------------------------------------------------------------- 读路径适配
+def pipeline_health() -> Dict[str, Any]:
+    from runtime.pipeline_health import build_health
+    return build_health(_ROOT)
+
+
 def feed(limit: int = 50) -> Dict[str, Any]:
     st = get_state()
     return st.run(lambda: st.app.feed.build(limit=limit))
@@ -106,7 +111,8 @@ def _communities_impl(st: WebState, refresh: bool) -> Dict[str, Any]:
         with open(out_json, encoding="utf-8") as f:
             cached = json.load(f)
         reports, source = cached.get("reports") or [], "cache"
-    return {"count": len(reports), "reports": reports, "source": source}
+    return {"count": len(reports), "reports": reports, "source": source,
+            "pipeline_health": pipeline_health()}
 
 
 def communities_raw() -> Dict[str, Any]:
@@ -718,6 +724,7 @@ def growth_creatives() -> Dict[str, Any]:
         except (ValueError, OSError):
             forming = {}
     return {"creatives": creatives, "meta": meta,
+            "pipeline_health": pipeline_health(),
             "forming_game": (forming.get("forming_game") or [])[:10],
             "channels": {k: {"rounds": v.get("rounds"), "stages": v.get("stages"),
                              "note": v.get("note")}

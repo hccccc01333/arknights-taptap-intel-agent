@@ -6,6 +6,28 @@ on:
   pull_request:
 
 jobs:
+  agent-v3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API and contract test dependencies
+        run: python -m pip install requests beautifulsoup4 jsonschema fastapi httpx
+      - name: Validate automatic Agent and public publication contracts
+        run: >-
+          python -m unittest
+          agent_v3.tests.test_public_site agent_v3.tests.test_automation13
+          agent_v3.tests.test_risk_and_comments agent_v3.tests.test_quality
+          agent_v3.tests.test_browser_tools agent_v3.tests.test_main_agent
+          agent_v3.tests.test_web_research agent_v3.tests.test_deepseek
+          agent_v3.tests.test_research_tracking agent_v3.tests.test_public_sources
+          agent_v3.tests.test_space_bunny agent_v3.tests.test_delivery
+          agent_v3.tests.test_zen agent_v3.tests.test_continuity agent_v3.tests.test_v3
+          agent_v2.tests.test_core agent_v2.tests.test_operations agent_v2.tests.test_model
+          runtime.tests.test_pipeline_health L4_intelligence.tests.test_creative_delivery
+          L4_intelligence.tests.test_llm -q
   test:
     runs-on: ubuntu-latest
     steps:

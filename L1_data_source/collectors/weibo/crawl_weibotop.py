@@ -29,6 +29,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import re
@@ -54,30 +55,9 @@ def now_iso() -> str:
     return datetime.now(TZ_CN).isoformat(timespec="seconds")
 
 
-def load_game_terms() -> List[str]:
-    terms: set[str] = set()
-    gdir = ROOT / "games"
-    if gdir.is_dir():
-        for fn in gdir.glob("*.json"):
-            try:
-                d = json.loads(fn.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                continue
-            for k in ("name", "key"):
-                if d.get(k):
-                    terms.add(str(d[k]).lower())
-            for a in (d.get("aliases") or []):
-                if a:
-                    terms.add(str(a).lower())
-    return sorted(terms, key=len, reverse=True)
 
 
-GAME_TERMS = load_game_terms()
 
-
-def is_game_related(text: str) -> bool:
-    low = (text or "").lower()
-    return any(t in low for t in GAME_TERMS)
 
 
 class WeiboTopCollector:
@@ -232,6 +212,20 @@ class WeiboTopCollector:
             for r in items:
                 r["observed_at"] = stamp
                 w.writerow({k: r.get(k, "") for k in FIELDS})
+# ★ 游戏词表统一由 collectors/game_terms.py 提供（2026-10-05）：
+#   六个采集器原来各写一份 load_game_terms()，彼此不一致 —— 百度认得的游戏
+#   微博未必认得。改成共用一份，改词表全网一次生效。
+# game_terms.py 在 collectors/ 根下，本采集器在子目录 → 用 parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from game_terms import get_matcher  # noqa: E402
+
+_MATCHER = get_matcher()
+GAME_TERMS = sorted(_MATCHER.game_terms | _MATCHER.industry_terms
+                     | _MATCHER.own_markers)
+
+
+def is_game_related(text: str) -> bool:
+    return _MATCHER.is_game_related(text)
 
 
 def main() -> int:

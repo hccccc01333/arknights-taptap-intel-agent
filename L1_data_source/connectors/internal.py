@@ -26,7 +26,8 @@ from schema.content_event import RawContentEvent, to_iso, hash_author, now_cn  #
 from connectors.base import SourceConnector, FetchResult, ConnectorError, FailureType  # noqa: E402
 from adapters import taptap as tap_ad, bilibili as bili_ad, douyin as dy_ad, weibo as wb_ad  # noqa: E402
 from adapters import baidu_hot as bd_ad  # noqa: E402
-from adapters import weibo_hot as wb_hot_ad  # noqa: E402
+from adapters import weibo_hot as wb_hot_ad
+from adapters import agent_search as ag_ad  # noqa: E402
 
 # dataset → (解析函数, content_type)
 PARSERS: Dict[Tuple[str, str], Tuple[Any, str]] = {
@@ -43,6 +44,7 @@ PARSERS: Dict[Tuple[str, str], Tuple[Any, str]] = {
     ("weibo", "comments"):       (wb_ad._comment,  "comment"),
     ("baidu_index", "hot_search"): (bd_ad._hot,     "rank"),
     ("weibo", "hot_search"):      (wb_hot_ad._hot, "rank"),
+    ("agent", "search"):          (ag_ad._search_result, "post"),
 }
 
 

@@ -39,7 +39,6 @@ from typing import Any, Dict, List, Optional
 import requests
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 TZ_CN = timezone(timedelta(hours=8))
 
 API = "https://api.bilibili.com"
@@ -50,6 +49,17 @@ SEARCH_URL = f"{API}/x/web-interface/search/type"
 
 # 游戏区 rid（B站分区）
 RID_GAME = 4
+
+# ★ 投稿流监控的关键词（2026-10-05）：与贴吧 29 个游戏吧同源 ——
+#   人工维护的"当下真有人在玩"名单。search 模式按 pubdate 倒序抓每轮最新投稿，
+#   跨轮 bvid 差分 = 各游戏的投稿速率（B站榜单 stat 是缓存的，速率测不了，见 forming.py 注释）
+DEFAULT_KEYWORDS = [
+    "明日方舟", "鸣潮", "原神", "崩坏星穹铁道", "绝区零", "王者荣耀",
+    "和平精英", "光遇", "恋与深空", "第五人格", "蛋仔派对", "我的世界",
+    "英雄联盟", "金铲铲之战", "永劫无间", "三角洲行动", "燕云十六声",
+    "碧蓝航线", "阴阳师", "炉石传说", "无期迷途", "少女前线", "无限暖暖",
+    "明日方舟终末地", "暗区突围", "迷你世界", "csgo", "黑神话悟空", "塞尔达",
+]
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
@@ -74,35 +84,22 @@ def _n(v: Any) -> int:
         return 0
 
 
-def load_game_terms() -> List[str]:
-    """游戏名 + 别名（与百度采集器同源，用于游戏相关性标记）。"""
-    terms: set[str] = set()
-    gdir = ROOT / "games"
-    if gdir.is_dir():
-        for fn in gdir.glob("*.json"):
-            try:
-                d = json.loads(fn.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                continue
-            for k in ("name", "key"):
-                if d.get(k):
-                    terms.add(str(d[k]).lower())
-            for a in (d.get("aliases") or []):
-                if a:
-                    terms.add(str(a).lower())
-    return sorted(terms, key=len, reverse=True)
 
 
-GAME_TERMS = load_game_terms()
 
 
+# ★ 游戏词表统一由 collectors/game_terms.py 提供（2026-10-05）：
+#   六个采集器原来各写一份 load_game_terms()，彼此不一致 —— 百度认得的游戏
+#   微博未必认得。改成共用一份（AC 自动机，2000+ 游戏名一次扫描），改词表全网一次生效。
+# game_terms.py 在 collectors/ 根下，本采集器在子目录 → 用 parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from game_terms import get_matcher  # noqa: E402
+
+_MATCHER = get_matcher()
 def guess_game(title: str, desc: str = "") -> str:
     """标题/简介里命中的游戏名（长词优先）。命中不了返回空。"""
-    low = f"{title} {desc}".lower()
-    for t in GAME_TERMS:
-        if t in low:
-            return t
-    return ""
+    hits = _MATCHER.matched_games(f"{title} {desc}")
+    return hits[0] if hits else ""
 
 
 class BiliHot:
@@ -151,11 +148,16 @@ class BiliHot:
         d = self._get(RANKING_URL, {"rid": RID_GAME, "type": "all"})
         return [v for v in (d.get("list") or []) if v.get("bvid")]
 
-    def search(self, keyword: str, page: int = 1) -> List[Dict[str, Any]]:
+    def search(self, keyword: str, page: int = 1,
+               order: str = "totalrank") -> List[Dict[str, Any]]:
         if not self._crawler:
             return []
         try:
-            return self._crawler.search_videos(keyword, page=page, page_size=20)
+            # ★ page_size=50（API 上限，2026-10-06）：20 条/轮的页容量把头部游戏
+            #   全部顶到封顶（实测 13/29 个关键词永远 20 条/轮），大游戏爆发时
+            #   增速反而测不出来。50 也只能扛到 200 投/时，饱和本身即强信号。
+            return self._crawler.search_videos(keyword, page=page, page_size=50,
+                                               order=order)
         except Exception:
             return []
 
@@ -187,6 +189,11 @@ class BiliHot:
 
     def collect(self, out_dir: Path, sources: List[str],
                 keywords: List[str]) -> Dict[str, Any]:
+        # ★ 每轮重读 agent 提案（原来只在 main() 启动时读一次——采集器长跑
+        #   几天不重启，提案要等几天才生效。现在下一轮就用上）
+        for extra in _agent_watchlist("bili_keyword"):
+            if extra not in keywords:
+                keywords.append(extra)
         stamp = now_iso()
         rows: List[Dict[str, Any]] = []
         got: Dict[str, int] = {}
@@ -209,8 +216,9 @@ class BiliHot:
                 got["popular"] = f"失败:{str(e)[:40]}"
             time.sleep(self.sleep)
         if "search" in sources and keywords:
+            # ★ order=pubdate：按发布时间倒序，本轮抓到的就是"最新投稿"
             for kw in keywords:
-                vids = self.search(kw)
+                vids = self.search(kw, order="pubdate")
                 rows += [self._row(v, f"search:{kw}", 0, stamp) for v in vids]
                 got[f"search:{kw}"] = len(vids)
                 time.sleep(self.sleep)
@@ -218,10 +226,27 @@ class BiliHot:
         rows = [r for r in rows if r["bvid"]]
         self._append_csv(out_dir / "hot_videos.csv", VIDEO_FIELDS, rows)
         snaps = self._write_snapshots(out_dir / "thread_snapshots.csv", rows, stamp)
-        game_hits = sorted({r["title"][:24] for r in rows if guess_game(r["title"], r["description"])})
+        # ★ 三档标注而不是硬过滤（2026-10-05 修正）：
+        #   ranking/popular 是 B站**游戏区官方榜**，内容天然是游戏；
+        #   但实测只用标题去判，只有 29% 命中 —— 因为大量视频标题写得跟游戏
+        #   半点关系没有（"海龟汤""大合集""射手，我们该算算旧账了"）。
+        #   叠上 description + author（官方号名就是游戏名）能到 95%。
+        #   所以：官方榜来源直接标 confirmed，词表命中的额外标 named，
+        #   两档都收进 game_hits —— 宁可多召回，交给上层语义召回和 LLM 分级。
+        game_hits = []
+        for r in rows:
+            from_official_rank = r["source"] in ("game_ranking", "popular")
+            named = guess_game(r["title"], r.get("description") or "")
+            if from_official_rank or named:
+                game_hits.append({
+                    "title": r["title"][:40],
+                    "game": named or "",
+                    "by": "official_rank" if from_official_rank else "term_match",
+                })
         self._log(out_dir / "crawl_runs.jsonl",
                   {"observed_at": stamp, "got": got, "kept": len(rows),
-                   "game_related": len(game_hits)})
+                   "game_related": len(game_hits),
+                   "named_by_term": sum(1 for g in game_hits if g["game"])})
         return {"observed_at": stamp, "got": got, "kept": len(rows),
                 "game_related": game_hits[:15], "rising_play": snaps}
 
@@ -275,11 +300,47 @@ class BiliHot:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
+def is_game_related(text: str) -> bool:
+    return _MATCHER.is_game_related(text)
+
+
+def _agent_watchlist(kind: str) -> list:
+    """搜索 agent 的监控提案（48h 过期）。agent 不在时静默为空。"""
+    try:
+        d = json.loads((ROOT / "data" / "state" / "agent_watchlist.json")
+                       .read_text(encoding="utf-8"))
+        return [x["name"] for x in d.get("proposals", [])
+                if x.get("type") == kind and x.get("expires_at", "") >
+                datetime.now(TZ_CN).isoformat(timespec="seconds")]
+    except Exception:
+        return []
+
+
+
+def _single_instance_lock(marker: str) -> bool:
+    """★ 单实例锁：已有同脚本 --watch 实例在跑就退出（防人工重启与看门狗
+    自动重启赛跑产生双实例——双实例会双写 CSV + 双倍请求（2026-10-06 事故）。"""
+    import psutil
+    me = os.getpid()
+    for p in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            if (not (p.info["name"] or "").lower().startswith("python")
+                    or p.info["pid"] == me):
+                continue
+            cl = " ".join(p.info["cmdline"] or [])
+            if marker in cl and "--watch" in cl:
+                print(f"[lock] 已有 watch 实例 pid={p.info['pid']}，本实例退出")
+                return False
+        except Exception:
+            pass
+    return True
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="B站游戏区/热门采集（创作者生产信号）")
     ap.add_argument("--out-dir", default="data/raw/bilibili")
     ap.add_argument("--sources", default="ranking,popular", help="ranking,popular,search")
-    ap.add_argument("--keywords", default="明日方舟", help="search 时的关键词（逗号分隔）")
+    ap.add_argument("--keywords", default="",
+                help="search 时的关键词（逗号分隔）；留空 = 用 DEFAULT_KEYWORDS（29 游戏名单）")
     ap.add_argument("--watch", action="store_true")
     ap.add_argument("--interval", type=int, default=900)
     ap.add_argument("--rounds", type=int, default=0)
@@ -292,15 +353,30 @@ def main() -> int:
     c = BiliHot(args.sleep)
     sources = [s.strip() for s in args.sources.split(",") if s.strip()]
     kws = [k.strip() for k in args.keywords.split(",") if k.strip()]
+    if "search" in sources and not kws:
+        kws = DEFAULT_KEYWORDS
+    # ★ 搜索 agent 的临时关键词并入（agent 发现的话题词盯 48h）
+    for extra in _agent_watchlist("bili_keyword"):
+        if extra not in kws:
+            kws.append(extra)
 
-    rounds = 0
-    while True:
-        r = c.collect(out_dir, sources, kws)
-        print(json.dumps(r, ensure_ascii=False, indent=2), flush=True)
-        rounds += 1
-        if not args.watch or (args.rounds and rounds >= args.rounds):
-            return 0
-        time.sleep(max(60, args.interval))
+    if not args.watch:
+        return 0
+    if not _single_instance_lock("crawl_bili_game_hot"):
+        return 0
+    # ★ 健壮循环：异常不外溢 + 退避重试（2026-10-05 事故：
+    #   一次 ConnectionReset 就让进程死掉，7 小时零采集且无人察觉）
+    # robust_watch.py 在 collectors/ 根下，本采集器在子目录 → 父级路径
+    _here = Path(__file__).resolve().parent
+    for _p in (_here, _here.parent):
+        if _p not in sys.path:
+            sys.path.insert(0, str(_p))
+    from robust_watch import run_forever
+    return run_forever(
+        name="bilibili",
+        fn=lambda: c.collect(out_dir, sources, kws),
+        interval=args.interval,
+    )
 
 
 if __name__ == "__main__":

@@ -82,27 +82,9 @@ def load_cookie() -> str:
     return os.environ.get("WEIBO_COOKIE", "").strip()
 
 
-def load_game_terms() -> List[str]:
-    """与百度采集器同源：行业级词 + games/*.json 档案词。"""
-    terms: set[str] = set()
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "bd", str(ROOT / "L1_data_source" / "collectors" / "baidu" / "crawl_baidu_hot.py"))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        terms = set(mod.GAME_TERMS)
-    except Exception:
-        terms.update({"游戏", "手游", "steam", "联动", "抽卡", "公测"})
-    return sorted(terms, key=len, reverse=True)
 
 
-GAME_TERMS = load_game_terms()
 
-
-def is_game_related(text: str) -> bool:
-    low = (text or "").lower()
-    return any(t in low for t in GAME_TERMS)
 
 
 class WeiboHotSearch:
@@ -241,6 +223,20 @@ class WeiboHotSearch:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+# ★ 游戏词表统一由 collectors/game_terms.py 提供（2026-10-05）：
+#   六个采集器原来各写一份 load_game_terms()，彼此不一致 —— 百度认得的游戏
+#   微博未必认得。改成共用一份，改词表全网一次生效。
+# game_terms.py 在 collectors/ 根下，本采集器在子目录 → 用 parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from game_terms import get_matcher  # noqa: E402
+
+_MATCHER = get_matcher()
+GAME_TERMS = sorted(_MATCHER.game_terms | _MATCHER.industry_terms
+                     | _MATCHER.own_markers)
+
+
+def is_game_related(text: str) -> bool:
+    return _MATCHER.is_game_related(text)
 
 
 def main() -> int:
@@ -269,13 +265,21 @@ def main() -> int:
         return 0
 
     rounds = 0
-    while True:
-        r = c.collect(out_dir, args.games_only)
-        print(json.dumps(r, ensure_ascii=False, indent=2), flush=True)
-        rounds += 1
-        if not args.watch or (args.rounds and rounds >= args.rounds):
-            return 0
-        time.sleep(max(60, args.interval))
+    if not args.watch:
+        return 0
+    # ★ 健壮循环：异常不外溢 + 退避重试（2026-10-05 事故：
+    #   一次 ConnectionReset 就让进程死掉，7 小时零采集且无人察觉）
+    # robust_watch.py 在 collectors/ 根下，本采集器在子目录 → 父级路径
+    _here = Path(__file__).resolve().parent
+    for _p in (_here, _here.parent):
+        if _p not in sys.path:
+            sys.path.insert(0, str(_p))
+    from robust_watch import run_forever
+    return run_forever(
+        name="weibo",
+        fn=lambda: c.collect(out_dir, args.games_only),
+        interval=args.interval,
+    )
 
 
 if __name__ == "__main__":

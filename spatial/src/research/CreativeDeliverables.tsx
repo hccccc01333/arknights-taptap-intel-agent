@@ -1,0 +1,12 @@
+import { useState } from 'react';
+import { downloadFile } from '../lib/presentation';
+import { Icon } from '../ui/Icon';
+import { creativeSVG, exportCreativeSVG, experimentResult, type CreativeDraft, type ExperimentPlan } from './creative';
+import type { Evidence } from './domain';
+
+export function CreativeDeliverables({drafts,experiment,evidence,onEvidence,onToast}:{drafts:CreativeDraft[];experiment?:ExperimentPlan;evidence:Evidence[];onEvidence:(e:Evidence)=>void;onToast:(s:string)=>void}){
+ const [busy,setBusy]=useState('');const r=experiment?experimentResult(experiment):null;
+ async function exportCover(d:CreativeDraft){if(busy)return;setBusy(d.id);try{downloadFile('TapTap-成果封面.svg',await exportCreativeSVG(d),'image/svg+xml');onToast('这份成果的封面已导出。');}catch{onToast('封面字体暂时无法读取，请稍后重试。');}finally{setBusy('');}}
+ if(!drafts.length&&!experiment)return null;
+ return <><section className="v6-deliverables"><h3>06 / 创作交付</h3>{!drafts.length&&<p>尚未保存创作草案。</p>}{drafts.map(d=><details key={d.id} className="v6-deliverable"><summary><span>{d.kind==='visual'?'封面':d.kind==='script'?'视频分镜':'社区文案'}</span><b>{d.title}</b><Icon name="chevron" size={16}/></summary><div className="v6-deliverable-body">{d.kind==='visual'?<><div className="v6-deliverable-poster" dangerouslySetInnerHTML={{__html:creativeSVG(d)}}/><button className="v4-btn subtle" disabled={!!busy} onClick={()=>void exportCover(d)}>{busy===d.id?'正在打包':'导出这份成果的 SVG'}<Icon name="download" size={15}/></button></>:d.kind==='script'?d.scenes.map((s,i)=><p key={s.id}><b>分镜 {i+1} / {s.duration} 秒</b><br/>{s.text}<br/>{s.caption}</p>):<p>{d.body}</p>}<div className="v6-deliverable-sources">{d.sourceIds.map(id=>{const e=evidence.find(e=>e.id===id);return e?<button key={id} onClick={()=>onEvidence(e)}>{e.title}<Icon name="arrow" size={13}/></button>:<small key={id}>关联来源当前不可用</small>;})}</div><small>用户编辑的创作草案 · {d.origin==='demo'?'合成演示情境':'已有记录'} · {new Date(d.editedAt).toLocaleString('zh-CN')}</small></div></details>)}</section>{experiment&&r&&<section className="v6-delivered-experiment"><h3>07 / 验证计划与观察</h3><h4>{experiment.hypothesis||'假设待填写'}</h4><p>{experiment.metric||'指标待填写'} / {experiment.window||'窗口待填写'}</p><div className="v6-delivered-rates"><span>对照<b>{r.baseline===null?'—':r.baseline.toFixed(2)+'%'}</b></span><span>提案<b>{r.trial===null?'—':r.trial.toFixed(2)+'%'}</b></span><span>差异<b>{r.delta===null?'—':r.delta.toFixed(2)+' 个百分点'}</b></span></div><p>{r.status}。记录由用户输入；数值比较不证明因果关系或统计显著性。</p><p>{experiment.notes||'数据来源、口径与限制待补充。'}</p></section>}</>;
+}

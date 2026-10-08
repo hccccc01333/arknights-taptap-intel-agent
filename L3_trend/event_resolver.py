@@ -52,6 +52,9 @@ TIME_WINDOW_H = 48
 PLATFORM_LABEL = {"baidu": "百度热搜", "weibo": "微博热搜",
                   "bilibili": "B站", "douyin": "抖音", "taptap": "TapTap"}
 
+import sys as _sys
+_sys.path.insert(0, os.path.join(_ROOT, 'L1_data_source', 'collectors'))
+
 SOURCES = [
     ("baidu", os.path.join(_ROOT, "data/raw/baidu_index/hot_search.csv"), "word"),
     ("weibo", os.path.join(_ROOT, "data/raw/weibo/hot_search.csv"), "word"),
@@ -94,6 +97,15 @@ def load_hotspots() -> List[Dict[str, Any]]:
                 if key not in latest or ts > (latest[key].get("observed_at") or ""):
                     latest[key] = r
         for key, r in latest.items():
+            # ★ 游戏闸门（2026-10-06）：这个 resolver 喂的是游戏创意链——
+            #   泛娱乐热搜（蔡康永/游客宿舍）进事件队列只会占掉创意名额。
+            #   与全系统同一个词表入口（game_terms）。
+            try:
+                from game_terms import get_matcher
+                if not get_matcher().is_game_related(key):
+                    continue
+            except Exception:
+                pass
             out.append({
                 "id": f"{plat}:{abs(hash(key)) % 10**8}",
                 "platform": plat,

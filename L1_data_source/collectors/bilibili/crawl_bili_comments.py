@@ -220,14 +220,17 @@ class BiliClient:
         filtered["w_rid"] = hashlib.md5((query + mixin).encode("utf-8")).hexdigest()
         return filtered
 
-    def search_videos(self, keyword: str, page: int = 1, page_size: int = 20) -> list[dict[str, Any]]:
-        # Try WBI search first
+    def search_videos(self, keyword: str, page: int = 1, page_size: int = 20,
+                      order: str = "totalrank") -> list[dict[str, Any]]:
+        # ★ order（2026-10-05）：totalrank=综合排序（默认，适合相关内容）；
+        #   pubdate=按发布时间倒序 —— 投稿速率检测必须用它，否则新视频混在
+        #   综合权重里，"最近有什么新投稿"这个问题答不了。
         params = {
             "search_type": "video",
             "keyword": keyword,
             "page": page,
             "page_size": page_size,
-            "order": "totalrank",
+            "order": order,
         }
         signed = self._encode_wbi(params)
         data = self._get("https://api.bilibili.com/x/web-interface/wbi/search/type", signed)
@@ -244,6 +247,7 @@ class BiliClient:
                 "keyword": keyword,
                 "page": page,
                 "page_size": page_size,
+                "order": order,
             },
         )
         if int(data2.get("code", -1)) == 0:

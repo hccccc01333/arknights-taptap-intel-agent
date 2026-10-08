@@ -119,10 +119,11 @@ function Card({ p, selected, dimmed, onSelect, onHover }: {
 }
 
 /* ---------------- 相机：滚轮推拉 + 点击推进（TapTap 的 scroll → dolly） ---------------- */
-export function CameraRig({ target, offsetX, length }: {
+export function CameraRig({ target, offsetX, length, onScrollRef }: {
   target: [number, number, number] | null;
   offsetX: number;      // 长廊走位（滚轮/拖动）
   length: number;       // 长廊总长
+  onScrollRef: (d: number) => void;
 }) {
   const { camera, gl } = useThree();
   // 三排卡片（Y 跨度 48，X 每列 18.5）→ Z=190 时 FOV42° 可见约 145×82，容 7 列

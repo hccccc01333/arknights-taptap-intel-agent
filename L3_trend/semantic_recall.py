@@ -18,6 +18,15 @@
   这是**召回**（宁可多召回），精度仍由下游 LLM 精判保证。
 
 ★ 模型是可选依赖：没装/下载不到就返回空召回，词表层照常工作（降级不崩）。
+
+★ 阈值 0.62 → 0.50（2026-10-06 用 ground truth 实测校准）：
+  正样本 = B站 game_ranking 唯一标题 96 个（榜单定义=全是游戏内容）
+  负样本 = 人工确认的非游戏热搜词 38 个
+    0.62  召回 11.5%   误报 0%   ← 原值：召回层形同虚设
+    0.50  召回 42.7%   误报 0%   ← 零误报下的最大召回，采用
+    0.45  召回 57.3%   误报 5.3% ← 再往下开始伤精度
+  剩余 ~57% 未召回的标题（海龟汤/0号大坝这类与锚点风格差太远的）靠
+  词表层 + agent 搜索信号补位；提锚点覆盖度是后续可做项。
 """
 
 from __future__ import annotations
@@ -47,7 +56,7 @@ ANCHORS: List[str] = [
 class SemanticRecall:
     """向量召回器。首次调用才加载模型（加载约 1-2 秒）。"""
 
-    def __init__(self, model_name: str = MODEL_NAME, threshold: float = 0.62) -> None:
+    def __init__(self, model_name: str = MODEL_NAME, threshold: float = 0.50) -> None:
         self.model_name = model_name
         self.threshold = threshold
         self._model = None
@@ -120,7 +129,7 @@ class SemanticRecall:
 _RECALLER: Optional[SemanticRecall] = None
 
 
-def get_recaller(threshold: float = 0.62) -> SemanticRecall:
+def get_recaller(threshold: float = 0.50) -> SemanticRecall:
     global _RECALLER
     if _RECALLER is None:
         _RECALLER = SemanticRecall(threshold=threshold)

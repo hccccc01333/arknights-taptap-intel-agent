@@ -73,8 +73,17 @@ def provider_key(prov: Optional[Dict[str, Any]]) -> Optional[str]:
         v = os.environ.get(k)
         if v:
             return v
-    if prov.get("base_url", "").startswith("https://openrouter.ai"):
-        return _registry_key()
+    if sys.platform == 'win32':
+        import winreg
+        for hive,path in ((winreg.HKEY_LOCAL_MACHINE,r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'),
+                          (winreg.HKEY_CURRENT_USER,r'Environment')):
+            try:
+                with winreg.OpenKey(hive,path) as registry:
+                    for name in prov.get('env_keys') or ():
+                        try:value=winreg.QueryValueEx(registry,name)[0]
+                        except OSError:continue
+                        if isinstance(value,str) and value.strip():return value.strip()
+            except OSError:continue
     return None
 
 # ---------------------------------------------------------------- §39 路由

@@ -64,72 +64,9 @@ def now_iso() -> str:
     return datetime.now(TZ_CN).isoformat(timespec="seconds")
 
 
-def load_game_terms() -> List[str]:
-    """游戏相关性粗筛词表 = **行业级词** + **我们自己的游戏档案**。
-
-    ★ 为什么要分两层（2026-10-05 实测暴露的缺口）：
-      只用 games/*.json 的话，词表里只有"明日方舟/鸣潮"两款，
-      B站游戏区 132 条视频只命中 5 条（3%）—— 因为我们没给别家游戏建档案，
-      但外部热点追踪关心的恰恰是**整个游戏行业在发生什么**。
-      所以：
-        行业级词 —— 判断"这是不是游戏话题"（与档案无关）
-        档案词   —— 判断"这是不是我们关心的游戏"（方舟/鸣潮）
-      两层都要，缺一层就会漏。
-
-    ★ 只做粗筛：命中 ≠ 相关（"方舟"可能指别的东西），
-      精确判断交给上层 LLM。这里宁可多召回，不可漏掉。
-    """
-    terms: set[str] = set()
-
-    # ---- 行业级：是不是游戏话题 ----
-    terms.update({
-        # 品类与形态
-        "游戏", "手游", "端游", "网游", "主机游戏", "steam", "steam游戏", "ps5", "xbox",
-        "switch", "任天堂", "索尼", "育碧", "暴雪", "米哈游", "鹰角", "腾讯游戏",
-        "网易游戏", "完美世界", "游族", "莉莉丝", "叠纸", "库洛", "鹰角网络",
-        # 产业与商业
-        "游戏行业", "游戏公司", "版号", "版号发放", "上线", "公测", "内测", "首测",
-        "开服", "删档", "联动", "IP联动", "二次元", "二游", "开放世界", "抽卡",
-        "氪金", "内购", "赛季更新", "版本更新", "平衡性调整", "削弱", "加强", "重做",
-        "玩法更新", "新角色", "新干员", "卡池", "up池", "保底", "歪",
-        "玩家群体", "游戏主播", "游戏实况", "攻略", "bug", "闪退", "卡顿", "服务器",
-        "崩服", "停服", "道歉", "道歉门", "抵制", "口碑",
-        # ★ 泛游戏词（2026-10-05 补：实测漏掉了吃鸡/主播/玩家/开黑等）
-        "玩家", "主播", "吃鸡", "开黑", "上分", "皮肤", "充值", "代练",
-        "外挂", "电竞", "赛事", "排位", "大逃杀",
-        # ★ 常见游戏名（来自 S1 索引 + event_graph 行业别名）
-        "绝区零", "崩铁", "星穹铁道", "崩坏", "蛋仔派对", "燕云十六声", "燕云",
-        "英雄联盟", "永劫无间", "三角洲行动", "三角洲", "第五人格", "光遇",
-        "迷你世界", "球球大作战", "三国志战略版", "使命召唤", "我的世界",
-        "原神", "和平精英", "阴阳师", "王者荣耀", "梦幻西游", "元气骑士",
-        "香肠派对", "地铁跑酷", "dnf", "魔兽", "炉石",
-    })
-
-    # ---- 我们自己的游戏档案：games/*.json 的 name + aliases ----
-    gdir = ROOT / "games"
-    if gdir.is_dir():
-        for fn in gdir.glob("*.json"):
-            try:
-                d = json.loads(fn.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                continue
-            for k in ("name", "key"):
-                if d.get(k):
-                    terms.add(str(d[k]).lower())
-            for a in (d.get("aliases") or []):
-                if a:
-                    terms.add(str(a).lower())
-    # 短别名必须长词优先（"明日方舟"要先于"方舟"匹配）
-    return sorted(terms, key=len, reverse=True)
 
 
-GAME_TERMS = load_game_terms()
 
-
-def is_game_related(text: str) -> bool:
-    """粗筛：文本里是否出现游戏名/别名/泛游戏词。"""
-    low = (text or "").lower()
-    return any(t in low for t in GAME_TERMS)
 
 
 class BaiduHotSearch:
@@ -292,25 +229,57 @@ class BaiduHotSearch:
 
 def run_watch(c: BaiduHotSearch, out_dir: Path, tabs: List[str],
               interval: int, games_only: bool, rounds: int = 0) -> int:
-    """常驻轮询。interval 秒一轮，rounds=0 表示无限。"""
-    n = 0
-    while rounds <= 0 or n < rounds:
-        n += 1
+    """常驻轮询。interval 秒一轮，rounds=0 表示无限。
+
+    ★ 双层保护：
+      内层 —— 单个 tab 失败不中断（原来就有）
+      外层 —— 整轮失败也不外溢，交给 robust_watch 退避重试
+             （2026-10-05 事故：weibo 采集器一次 ConnectionReset 就死，7 小时零采集）
+    """
+    def one_round() -> Dict[str, Any]:
+        out = {}
         for tab in tabs:
             try:
                 r = c.collect(out_dir, tab, games_only)
-                new = BaiduHotSearch.new_entries(out_dir / "hot_search.csv",
-                                                 [x["word"] for x in []])
+                out[tab] = {"total": r["total"], "kept": r["kept"],
+                            "game_related": r["game_related"]}
                 print(f"[{r['observed_at']}] tab={tab} 共{r['total']} 保留{r['kept']} "
                       f"游戏相关{r['game_related']}", flush=True)
                 if r["game_words"]:
                     print(f"    游戏话题: {', '.join(r['game_words'][:8])}", flush=True)
-            except Exception as e:          # 单档失败不中断常驻
+            except Exception as e:          # 单档失败不中断整轮
                 print(f"[error] tab={tab} {type(e).__name__}: {str(e)[:80]}", file=sys.stderr)
+                out[tab] = {"error": str(e)[:80]}
             time.sleep(c.sleep)
-        if rounds <= 0 or n < rounds:
+        return out
+
+    if rounds and rounds > 0:               # 有限轮次：直接跑，不套 watch
+        for _ in range(rounds):
+            one_round()
             time.sleep(max(10, interval))
-    return 0
+        return 0
+
+    # robust_watch.py 在 collectors/ 根下，本采集器在子目录 → 父级路径
+    _here = Path(__file__).resolve().parent
+    for _p in (_here, _here.parent):
+        if _p not in sys.path:
+            sys.path.insert(0, str(_p))
+    from robust_watch import run_forever
+    return run_forever(name="baidu", fn=one_round, interval=interval)
+# ★ 游戏词表统一由 collectors/game_terms.py 提供（2026-10-05）：
+#   六个采集器原来各写一份 load_game_terms()，彼此不一致 —— 百度认得的游戏
+#   微博未必认得。改成共用一份（AC 自动机，2000+ 游戏名一次扫描），改词表全网一次生效。
+# game_terms.py 在 collectors/ 根下，本采集器在子目录 → 用 parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from game_terms import get_matcher  # noqa: E402
+
+_MATCHER = get_matcher()
+GAME_TERMS = sorted(_MATCHER.game_terms | _MATCHER.industry_terms
+                     | _MATCHER.own_markers)
+
+
+def is_game_related(text: str) -> bool:
+    return _MATCHER.is_game_related(text)
 
 
 def main() -> int:

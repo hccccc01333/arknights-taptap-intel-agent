@@ -76,6 +76,8 @@ PLATFORM_REGISTRY: Dict[str, Dict[str, Any]] = {
     "baidu_index":   {"name": "百度指数",      "status": "planned", "kinds": ["index"]},
     "wechat":        {"name": "微信",          "status": "planned", "kinds": ["article"]},
     "news":          {"name": "新闻媒体",      "status": "planned", "kinds": ["article"]},
+    "agent": {"name": "搜索agent", "status": "active",
+            "kinds": ["post", "video"]},
     "reddit":        {"name": "Reddit",        "status": "planned", "kinds": ["post", "comment"]},
     "x":             {"name": "X (Twitter)",   "status": "planned", "kinds": ["post"]},
     "youtube":       {"name": "YouTube",       "status": "planned", "kinds": ["video", "comment"]},

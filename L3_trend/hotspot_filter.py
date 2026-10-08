@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import os
 import sys
 from typing import Any, Dict, List, Optional
@@ -148,9 +149,48 @@ class HotspotFilter:
                 "missed_by_rule": len(rest)}
 
     # ------------------------------------------------------------ LLM 精判
+    # 断点文件 = 输出文件本身（verdicts 按 id 稳定可复用）
+    PREV_PATH = os.path.join(_ROOT, "data", "state", "hotspot_relevance.json")
+
+    @classmethod
+    def _load_prev_verdicts(cls) -> Dict[str, Dict[str, Any]]:
+        """上次判定结果 {id: {verdict, reason}} —— 增量判定的断点。
+
+        ★ 失败判定不入断点：上一轮 LLM 挂掉时的"未给出有效分档/不可用"是坏数据，
+          复用它们等于把失败永久固化（原神们会一直停在 adjacent），必须重判。
+        """
+        bad = ("未给出有效分档", "LLM 不可用", "解析失败")
+        try:
+            with open(cls.PREV_PATH, encoding="utf-8") as f:
+                return {str(v.get("id")): {"verdict": v.get("verdict"),
+                                           "reason": v.get("reason")}
+                        for v in (json.load(f).get("verdicts") or [])
+                        if v.get("id") and not any(b in (v.get("reason") or "") for b in bad)}
+        except (ValueError, OSError):
+            return {}
+
+    def _get_matcher(self):
+        """游戏词表 matcher（agent 统一入口），供快速通道用。"""
+        try:
+            sys.path.insert(0, os.path.join(_ROOT, "L1_data_source", "collectors"))
+            from game_terms import get_matcher
+            return get_matcher()
+        except Exception:
+            return None
+
     def judge(self, items: List[Dict[str, Any]], batch_size: int = 8) -> List[Dict[str, Any]]:
-        """对粗筛后的候选逐条判相关性。返回带 verdict/reason 的完整列表。"""
-        screen = self.screen(items)
+        """对粗筛后的候选逐条判相关性。返回带 verdict/reason 的完整列表。
+
+        ★ 增量判定（2026-10-06）：CSV 是累积快照，全量重跑一次要打 ~1800 次
+          LLM（免费模型直接被打挂，原神都判不出分档）。id 跨轮稳定
+          （platform:bvid/word），已判条目直接复用断点，只对新增条目跑粗筛+LLM。
+        """
+        prev = self._load_prev_verdicts()
+        fresh = [it for it in items if str(it.get("id")) not in prev]
+        reused_n = len(items) - len(fresh)
+        if reused_n:
+            print(f"[filter] 复用上次判定 {reused_n} 条，本次只处理新增 {len(fresh)} 条")
+        screen = self.screen(fresh)
         candidates = screen["candidates"]
         self.usage_stats["rule_items"] += len(candidates)
         router = self._get_router()
@@ -165,6 +205,40 @@ class HotspotFilter:
                 verdicts[iid] = {"verdict": "adjacent", "reason": "语义召回但未过 LLM"}
             else:
                 verdicts[iid] = {"verdict": "irrelevant", "reason": "词表与语义均未召回"}
+        verdicts.update(prev)                     # ★ 复用断点（新判定优先覆盖）
+
+        # ★ 词表直判快速通道（2026-10-06）：标题本身就是词表收录的**真游戏名**
+        #   （freq>0 = 索引/贴吧/B站真实出现过，非手写简称）且标题很短（热搜词形态）
+        #   —— "原神""王者荣耀"判 related 不需要 LLM，免费模型的调用要留给
+        #   真正需要消歧的长标题。
+        try:
+            from game_terms import _load_term_table
+            freq_map = _load_term_table()
+        except Exception:
+            freq_map = {}
+        fast = 0
+        for c in list(candidates):
+            cid = str(c.get("id"))
+            if cid in verdicts:
+                continue
+            title = (c.get("title") or "").strip()
+            if len(title) <= 14:
+                hit = None
+                for w in m.matched_games(title) if (m := self._get_matcher()) else []:
+                    if freq_map.get(w, -1) > 0:
+                        hit = w
+                        break
+            else:
+                hit = None
+            if hit:
+                verdicts[cid] = {"verdict": "related",
+                                 "reason": f"标题即游戏名《{hit}》（词表直判）"}
+                fast += 1
+        if fast:
+            candidates = [c for c in candidates
+                          if str(c.get("id")) not in verdicts]
+        self.usage_stats["fast_path"] = self.usage_stats.get("fast_path", 0) + fast
+
         if not router or not candidates:
             for c in candidates:
                 verdicts[str(c.get("id"))] = {"verdict": "adjacent", "reason": "LLM 不可用，保守留作背景"}
@@ -253,8 +327,9 @@ def load_items_from_csv(path: str, platform: str) -> List[Dict[str, Any]]:
     seen: set = set()
     with open(path, encoding="utf-8-sig", newline="") as f:
         for r in csv.DictReader(f):
-            key = r.get("bvid") or r.get("word") or r.get("external_id") or ""
-            title = r.get("title") or r.get("word") or ""
+            key = r.get("bvid") or r.get("word") or r.get("item_id")                 or r.get("external_id") or ""
+            title = re.sub(r"</?em[^>]*>", "",
+                           r.get("title") or r.get("word") or "").strip()
             if not key or not title:
                 continue
             # ★ 这些 csv 是**累积快照**（每轮 append），同一 bvid/词会出现多次；
@@ -273,7 +348,9 @@ if __name__ == "__main__":
     import sys as _s
     root = _ROOT
     items = (load_items_from_csv(os.path.join(root, "data/raw/baidu_index/hot_search.csv"), "baidu") +
-             load_items_from_csv(os.path.join(root, "data/raw/bilibili/hot_videos.csv"), "bilibili"))
+             load_items_from_csv(os.path.join(root, "data/raw/bilibili/hot_videos.csv"), "bilibili") +
+             load_items_from_csv(os.path.join(root, "data/raw/weibo/hot_search.csv"), "weibo") +
+             load_items_from_csv(os.path.join(root, "data/raw/agent/search_results.csv"), "agent"))
     f = HotspotFilter()
     res = f.judge(items)
     counts: Dict[str, int] = {}

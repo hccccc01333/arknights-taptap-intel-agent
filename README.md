@@ -1,11 +1,43 @@
+# V3 Alpha 14 · 自动化情报、素材与增长创意
+
+[打开网站](https://hccccc01333.github.io/taptap-hotspot-intel/) · [GitHub部署与成果同步](docs/V3-GitHub部署与成果同步.md) · [版本记录](docs/版本记录.md)
+
+源码推送自动部署页面；本地后台自动同步真实成果，打开网站即可浏览五类内容。后台仍在本地运行，电脑关闭后保留最后一次成果。公开页不包含原始采集库、账号信息、密钥或模型推理过程。
+
+## 当前开发版本：V3 Alpha 13
+
+当前版本：`3.0.0-alpha.13`。本轮实现[自动交付、分类浏览与子Agent补查闭环](docs/V3-自动交付与补查闭环.md)，正常界面只保留五个浏览入口，后台独立推进初筛和深度任务；核查TapTap产品边界，素材须有可编辑使用稿，执行效果反馈暂不建设。上轮规则见[正负面、评论补采与游戏入口](docs/V3-正负面与评论补采.md)；下方旧版本段落保留对应时点记录，以最新契约为准。
+
+Alpha 9 实现[业务主 Agent 与所属研究子 Agent](docs/V3-主Agent与研究子Agent.md)：主 Agent 筛选候选并委派研究，子 Agent 返回有来源的热点解读，主 Agent 整理游戏情报、可用素材并决定增长创意。热点默认展示解读，原文可核查；两条真实后台周期交付情报与素材，均判断观察，完整自动增长创意仍为零。通用检索、持续补查和业务质量继续完善。
+
+Alpha 8 接入[官方 DeepSeek Flash](docs/V3-DeepSeek.md)：推理强度与输出预算独立配置，最终 JSON 与推理字段分开处理。真实文旅情报任务已通过，未确认增长机会时持续观察；自动增长创意仍为零，整体交付质量继续验收。
+
+围绕“全网热点追踪 → AI 情报与素材积累 → TapTap 实际增长创意”进行架构升级。默认前端入口为 V3，V1 / V2 保留；实际能力、验证状态与边界见 [V3 架构与验收](docs/V3-架构与验收.md)、[版本记录](docs/版本记录.md) 和 [启动说明](agent_v3/README.md)。
+
+新增[跨领域来源与正文积累](docs/V3-跨领域来源.md)：中新社社会、文娱、生活订阅和贴吧公开话题简介，详情按来源轮换并标明实际范围。已实现十三个渠道实采、独立来源素材整理、持久情报与创意任务、供应商退避和每小时自动周期；情报与素材可独立积累，再为明确机会制作创意。[OpenCode Zen 免费原生任务与推理强度设置](docs/V3-OpenCode-Zen.md) 已保存第一条后台独立 AI 情报及表达素材。新增 [太空兔官网 API 与五档推理设置](docs/V3-Space-Bunny.md)，两次真实调用均返回 502，未计为新成果。有一条旧的真实来源交互辅助样例。自动增长创意、发现质量与素材制作仍待验收。版本为 `3.0.0-alpha.7`，不表示业务目标已经全部完成。
+
+Alpha 7 新增[证据研究与事件跟踪](docs/V3-证据研究与事件跟踪.md)：按缺口安排正文、背景检索和讨论抽样；稳定来源身份、离线跨领域语义召回、原文关系核对及可撤回归并接入持续流程。已取得真实 TapTap / B 站热门评论，最新排序和完整语境仍有失败，AI 额度暂停保留。
+
 # taptap-hotspot-intel
 
 > 面向游戏社区的 Agent 情报系统：**全网热点追踪 → 情报与素材 → 可落地的增长创意**。
 > 以 TapTap 为第一个接入平台。
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-323%20passing-34d399)](#开发)
-[![CI](https://img.shields.io/badge/CI-passing-4c1)](.github/workflows/ci.yml)
+[![V2](https://img.shields.io/badge/V2_checks-53%20local-34d399)](docs/V2-验收记录.md)
+[旧 CI 配置](.github/workflows/ci.yml)
+
+## V2 接手重构（2026-10-07）
+
+V2 阶段默认前端曾切换到独立 V2 工作台，旧界面从 `?version=1` 进入。V2 使用真实 API 和 `data/v2/agent.sqlite3`，保留 V1 源码快照与原始数据。
+
+- [完整产品与系统设计](docs/V2-产品与系统设计.md)：从增长结果倒推采集、Agent 研究、事件、创意、素材、反馈与日报周报。
+- [V2 启动和运行说明](agent_v2/README.md)：后台、前端、凭证配置、模型选择、命令行和接口。
+- [实测与验收记录](docs/V2-验收记录.md)：53 项测试、真实六类渠道采集、浏览器验证，以及模型调用与质量基线缺口。
+
+当前完成完整设计与可运行首版，**整体验收未完成**。模型服务的真实研究交付尚未通过，不能将采集成功或界面运行当作分析准确与业务增长的证明。
+
+以下为 V1 的历史产品说明与实现，不代表 V2 已实现和验收了其中所有能力。
 
 ---
 
@@ -235,6 +267,20 @@ docs/               架构设计
 ---
 
 ## 开发
+
+### 接手重构与数据时效检查（2026-10-07）
+
+当前重构目标与验收顺序见 [Agent 重构实施方案](docs/Agent重构实施方案.md)。文档中的已实现与待实施范围分别列明；下方既有测试徽章不作为业务效果证明。
+
+只读检查现存采集入库、清洗、趋势、情报分析、外部快照和社区报告的数据时间：
+
+```bash
+python -X utf8 runtime/pipeline_health.py
+python -X utf8 runtime/pipeline_health.py --json --max-age-minutes 60
+python -X utf8 -m unittest runtime.tests.test_pipeline_health -v
+```
+
+Web 的 `/api/pipeline-health` 需要登录；社区报告及 Universe 接口也返回时效状态。时效阈值尚未按各渠道校准，数据水位不等于任务最近执行时间。重新生成报告或刷新页面不代表上游数据更新。
 
 ```bash
 python -m unittest discover -s L3_trend/tests -p "test_*.py"

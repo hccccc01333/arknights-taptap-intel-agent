@@ -1,0 +1,29 @@
+.agentv3 .v3-stage{border-left:3px solid #0f766e;background:#f0fdfa;padding:12px 16px;color:#475569;font-size:13px}
+.agentv3 .v3-two-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+.agentv3 .v3-topic{display:block;text-align:left;width:100%;border:1px solid #dce6e3;background:#fff;color:#172b29;padding:18px;margin:0 0 12px;border-radius:12px;overflow-wrap:anywhere}
+.agentv3 .v3-topic:hover{border-color:#0f766e;background:#f8fffc}.agentv3 .v3-topic small{color:#64748b}.agentv3 .v3-topic h3{font-size:18px;margin:8px 0}.agentv3 .v3-topic p{font-size:14px;margin:8px 0 0}
+.agentv3 .v3-materials{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;margin:20px 0}
+.agentv3 .v3-material{border:1px solid #dce6e3;border-radius:12px;padding:20px;background:#fff;overflow-wrap:anywhere}.agentv3 .v3-material small{color:#0f766e}.agentv3 .v3-material h4{font-size:18px;margin:12px 0}
+.agentv3 .v3-preserve,.agentv3 .v3-report{white-space:pre-wrap;overflow-wrap:anywhere}.agentv3 .v3-json,.agentv3 .v3-report{background:#f7faf9;border:1px solid #dce6e3;padding:16px;font-size:13px;max-width:100%;overflow:auto}.agentv3 .v2-evidence{margin:12px 0}.agentv3 .v2-evidence small{display:block;margin-top:8px}.agentv3 details p{overflow-wrap:anywhere}.agentv3 input[type=checkbox]{width:auto;margin-right:10px}
+@media(max-width:850px){.agentv3 .v3-two-columns{grid-template-columns:1fr}.agentv3 .v2-section-head{align-items:flex-start;flex-direction:column}.agentv3 .v2-header{gap:12px;flex-wrap:wrap}}
+
+.agentv3 .v3-pipeline{padding:12px 16px;border:1px solid #dce6e3;background:#f8fffc;border-radius:10px;margin:16px 0;color:#475569;font-size:13px}.agentv3 .v3-pipeline p{margin:4px 0;overflow-wrap:anywhere}
+.agentv3 .v2-settings>*{min-width:0}.agentv3 .v2-settings select{width:100%;min-width:0}
+
+.agentv3 .v3-domain-filter{display:flex;align-items:center;gap:12px;margin:16px 0}.agentv3 .v3-domain-filter select{min-width:150px;max-width:100%;padding:8px;border:1px solid #dce6e3;border-radius:8px}
+
+@media(max-width:850px){.agentv3 .v3-discovery.v3-selected aside{order:-1}}
+
+.v3-game-feed{margin:18px 0 24px;padding:18px;border:1px solid #ddd6c9;border-radius:16px;background:#fbfaf5}.v3-game-feed .v3-topic{text-align:left;width:100%}.v3-risk{padding:12px;border-left:3px solid #ab7551;background:#fff8ef;border-radius:4px;overflow-wrap:anywhere}.v3-risk[data-allowed="yes"]{border-color:#557a62;background:#f1f7f1}.v3-risk small{display:block;margin-top:7px}
+.v3-auto-summary{padding:14px 18px;border-radius:12px;background:#eef7f4;color:#345c50;font-size:14px;line-height:1.8}
+.v3-library-tools{display:flex;justify-content:space-between;gap:20px;align-items:center;margin:24px 0}
+.v3-categories{display:flex;gap:8px;flex-wrap:wrap}
+.v3-categories button{background:transparent;color:#54656b;border:1px solid #d2dfe0;border-radius:20px;padding:8px 14px}
+.v3-categories button[aria-pressed=true]{background:#183b38;color:white;border-color:#183b38}
+.v3-library-tools input{max-width:280px;border:1px solid #d2dfe0;border-radius:10px;padding:10px}
+.v3-library-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:16px}
+.agentv2 .v3-library-card{display:block;text-align:left;background:white;color:#253a3c;border:1px solid #dce6e3;border-radius:16px;padding:24px;min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.agentv2 .v3-library-card:hover,.agentv2 .v3-library-card[aria-pressed=true]{border-color:#238477;box-shadow:0 4px 20px #153e3510}
+.v3-library-card small{color:#48877c}.v3-library-card h3{font-size:18px;line-height:1.6}.v3-library-card p{font-size:14px;line-height:1.8;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.v3-library-card span{font-size:13px;color:#37766a}
+.v3-library-detail{margin-top:24px;padding:28px;background:white;border:1px solid #d9e3df;border-radius:16px;overflow-wrap:anywhere}.v3-library-detail p,.v3-library-detail li{line-height:1.9}.v3-library-detail pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:600px){.v3-library-tools{align-items:stretch;flex-direction:column}.v3-library-tools input{max-width:none}.v3-library-detail{padding:18px}}
