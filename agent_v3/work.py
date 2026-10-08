@@ -123,10 +123,10 @@ def wake_provider_work(store):
     """Switching to a usable provider need not inherit the old provider's retry time."""
     with store.conn:
         store.conn.execute("""UPDATE work_item SET status='pending',retry_at=NULL,updated_at=?
-          WHERE status='deferred' AND error IN (?,?,?,?,?,?,?,?,?)""",(now_iso(),"免费模型日额度耗尽",
+          WHERE status='deferred' AND error IN (?,?,?,?,?,?,?,?,?,?)""",(now_iso(),"免费模型日额度耗尽",
           "模型服务限流","模型账户额度或服务配置不可用","模型响应未完成，等待重试","OpenCode Zen 免费层拒绝调用（HTTP 403）",
           "已确认 Zen 免费额度耗尽，AI 等待恢复","太空兔上游请求失败（HTTP 502）",
-          "太空兔密钥或访问权限不可用","太空兔接口或模型配置不可用"))
+          "太空兔密钥或访问权限不可用","太空兔接口或模型配置不可用","用户确认模型额度不足，AI 等待恢复"))
 
 
 def overview(store):

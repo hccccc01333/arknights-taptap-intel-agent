@@ -114,7 +114,8 @@ def overview():
         data['counts']['usable_materials']=len(data['materials'])
         data['latest_delivery_at']=with_store.conn.execute('''SELECT MAX(stamp) FROM
           (SELECT created_at AS stamp FROM topic_intelligence UNION ALL SELECT created_at FROM creative)''').fetchone()[0]
-        return classify_outputs(data)
+        from .library_context import attach
+        return attach(with_store,classify_outputs(data))
     finally:with_store.close()
 
 
@@ -280,6 +281,8 @@ def read(kind,identifier=None,query="",days=7,domain=''):
             return read_relation(store,identifier)
         if kind=='topics':return {'topics':queue(store,domain=domain),'hotspots':store.hotspot_feed(domain=domain)}
         if kind=="event":return store.get_event(identifier)
+        if kind=='creative_event':return store.creative_event(identifier)
+        if kind=='sources':return {'sources':store.evidence(identifier)}
         if kind=="materials":
             from .presentation import material_ready
             return {"materials":[m for m in store.usable_materials(query,limit=100) if material_ready(m)]}

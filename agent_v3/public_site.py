@@ -57,13 +57,13 @@ def quotes(value):
     return value
 
 def signal(value):
-    result=project(value,'signal_id topic_id fingerprint current_fingerprint created_at risk_assessment')
+    result=project(value,'signal_id topic_id fingerprint current_fingerprint created_at risk_assessment delivery_meta')
     result['payload']=quotes(project(value.get('payload',{}),
         'title category platform game_context observed_change why_it_matters hypothesis next_watch facts validation'))
     return result
 
 def material(value):
-    result=project(value,'material_id kind origin title content rights_status evidence_ids source_versions application')
+    result=project(value,'material_id kind origin title content rights_status evidence_ids source_versions application created_at delivery_meta')
     # Delivery body is generated, editable product content, not source text.
     delivery=value.get('application',{}).get('delivery') if value.get('application') else None
     if delivery:result['application']['delivery']['body']=clean(delivery['body'])
@@ -71,7 +71,7 @@ def material(value):
     return quotes(result)
 
 def creative(value):
-    result=project(value,'creative_id event_id created_at risk_assessment')
+    result=project(value,'creative_id event_id created_at risk_assessment delivery_meta')
     result['payload']=project(value.get('payload',{}),
         'title category platform audience growth_goal hook distribution placement user_action journey copy steps '
         'timing resources growth_hypothesis prerequisites validation_plan measurement risks deliverables')
@@ -79,13 +79,15 @@ def creative(value):
     return quotes(result)
 
 def interpretation(value):
-    result=project(value,'topic_id fingerprint created_at updated_at')
+    result=project(value,'topic_id fingerprint created_at updated_at current_heat_evidence')
     result['payload']=quotes(project(value.get('payload',{}),
         'status headline one_line background core timeline views controversies unknowns heat_evidence '
         'freshness_assessment risk_assessment discussion_review'))
     from .connectors import CHANNELS
     domains={c['id']:c.get('domains',[c['domain']]) for c in CHANNELS}
     for entry in result['payload'].get('heat_evidence',[]):
+        entry['domains']=domains.get(entry.get('channel_id'),[])
+    for entry in result.get('current_heat_evidence',[]):
         entry['domains']=domains.get(entry.get('channel_id'),[])
     return result
 
@@ -107,11 +109,14 @@ def topic(store,tid):
 
 def snapshot(store):
     from .presentation import classify_outputs,material_ready
+    from .library_context import attach,evidence_ids,publication_status
     # Read a coherent SQLite snapshot while the scheduler may be writing.
     store.conn.execute('BEGIN')
     try:
         raw=classify_outputs(store.overview())
-        materials=[material(m) for m in store.usable_materials(limit=100) if material_ready(m)]
+        raw['materials']=[m for m in store.usable_materials(limit=100) if material_ready(m)]
+        attach(store,raw)
+        materials=[material(m) for m in raw['materials']]
         hotspots=[interpretation(h) for h in raw['hotspots']]
         signals=[signal(s) for s in raw['game_signals']]
         creatives=[creative(c) for c in raw['creatives']]
@@ -122,12 +127,13 @@ def snapshot(store):
         overview={'version':raw['version'],'counts':{'hotspots':len(hotspots),'game_signal':len(signals),'usable_materials':len(materials)},
             'hotspots':hotspots,'game_signals':signals,'materials':materials,'creatives':creatives,'game_coverage':game,
             'latest_delivery_at':latest,'publication':{'generated_at':stamp,'mode':'public_results','worker':'local',
+                'automation_status':publication_status(store),
                 'automatic_enabled':json.loads(store.conn.execute("SELECT value FROM settings WHERE key='schedule'").fetchone()[0]).get('enabled',False) if store.conn.execute("SELECT value FROM settings WHERE key='schedule'").fetchone() else False,
                 'note':'真实产出的公开整理版；完整原文、评论、截图和运行记录保存在本地。'}}
         ids={h['topic_id'] for h in hotspots+game['briefs']}|{s['topic_id'] for s in signals}
-        events={}
+        events={};creative_events={}
         for c in raw['creatives']:
-            e=store.get_event(c['event_id'])
+            e=store.creative_event(c['creative_id'])
             if not e:continue
             result=project(e,'event_id title risk_assessment')
             basis=store.creative_basis(c)
@@ -135,9 +141,12 @@ def snapshot(store):
             result['source_snapshots']=[source(s) for s in e.get('source_snapshots',[])]
             result['versions']=[{'created_at':v.get('created_at'),'assessment':project(v.get('assessment',{}),'summary')} for v in e.get('versions',[])]
             events[c['event_id']]=result
+            creative_events[c['creative_id']]=result
             if basis.get('topic_id'):ids.add(basis['topic_id'])
-        return {'schema':'v3-public-results-1','generated_at':stamp,'overview':overview,
-            'topics':{tid:topic(store,tid) for tid in sorted(ids)},'events':events}
+        data={'schema':'v3-public-results-1','generated_at':stamp,'overview':overview,
+            'topics':{tid:topic(store,tid) for tid in sorted(ids)},'events':events,'creative_events':creative_events}
+        data['sources']={s['evidence_id']:source(s) for s in store.evidence(sorted(evidence_ids(data)))}
+        return data
     finally:store.conn.rollback()
 
 def gh(*args,body=None):

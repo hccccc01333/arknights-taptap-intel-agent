@@ -96,6 +96,8 @@ class Store(EvidenceStore):
         initialize(self)
         from .retention import initialize as initialize_retention
         initialize_retention(self)
+        from .revisions import initialize as initialize_revisions
+        initialize_revisions(self)
         self.conn.executescript("""
         CREATE TABLE IF NOT EXISTS channel_observation(
           channel_id TEXT, evidence_id TEXT, observed_at TEXT, position REAL,
@@ -322,20 +324,22 @@ class Store(EvidenceStore):
             freshness=delivery_current(self,read_topic(self,item['topic_id'],include_tracking=False),item['payload'])
             if not freshness['business_eligible'] or not freshness['heat_evidence']:continue
             item['payload']['freshness_assessment']=freshness
+            item['current_heat_evidence']=freshness['heat_evidence']
             if domain:
                 from .connectors import CHANNELS
                 channels={c['id'] for c in CHANNELS if domain in c.get('domains',[c['domain']])}
-                if not any(h.get('channel_id') in channels for h in item['payload']['heat_evidence']):continue
+                if not any(h.get('channel_id') in channels for h in item['current_heat_evidence']):continue
             result.append(item)
             if len(result)>=limit:break
         return result
 
     def game_signals(self,limit=30):
+        from .revisions import delivery_freshness
         return [{**dict(r),'payload':json.loads(r['payload']),'risk_assessment':self.event_risk({'topic_id':r['topic_id'],'topic_fingerprint':r['fingerprint']})} for r in self.conn.execute("""SELECT s.*,t.fingerprint AS current_fingerprint
-          FROM game_signal s JOIN topic t USING(topic_id) WHERE s.fingerprint=t.fingerprint AND
+          FROM game_signal s JOIN topic t USING(topic_id) WHERE t.eligible=1 AND s.fingerprint=t.fingerprint AND
           s.run_id=(SELECT i.run_id FROM topic_intelligence i WHERE i.topic_id=s.topic_id AND i.fingerprint=s.fingerprint ORDER BY i.created_at DESC,i.rowid DESC LIMIT 1)
           AND COALESCE(json_extract(s.payload,'$.validation.status'),'accepted')='accepted'
-          ORDER BY s.created_at DESC LIMIT ?""",(limit,))]
+          ORDER BY s.created_at DESC LIMIT ?""",(limit,)) if delivery_freshness(self,r['topic_id'])['business_eligible']]
 
     def usable_materials(self,query='',limit=60,*,kind=''):
         return [m for m in self.assets(query,kind,limit=100) if m.get('revision_state')!='historical' and m.get('risk_assessment',{}).get('material_allowed')
@@ -347,7 +351,14 @@ class Store(EvidenceStore):
         current=self.conn.execute('SELECT fingerprint FROM topic WHERE topic_id=?',(tid,)).fetchone()
         if not current or current[0]!=fp:
             return verdict({'polarity':'unknown','level':'unknown','reason':'当前来源版本与创意依据不一致，待重新评估'})
-        return policy(self,tid,fp)
+        safety=policy(self,tid,fp)
+        if safety['growth_allowed']:
+            from .revisions import delivery_freshness
+            fresh=delivery_freshness(self,tid)
+            if not fresh['business_eligible']:
+                return {**safety,'growth_allowed':False,'material_allowed':False,
+                    'gate_reason':'事件已超出当前使用窗口：'+fresh['reason'],'freshness':fresh}
+        return safety
 
     def get_event(self,event_id):
         event=super().get_event(event_id)
@@ -367,8 +378,26 @@ class Store(EvidenceStore):
         version=self.conn.execute('SELECT assessment FROM event_version WHERE event_id=? AND run_id=?',
             (row['event_id'],row['run_id'])).fetchone()
         if version:return json.loads(version[0])
-        current=self.conn.execute('SELECT assessment FROM event WHERE event_id=?',(row['event_id'],)).fetchone()
-        return json.loads(current[0]) if current else {}
+        # Today's event assessment is not proof of a missing original basis.
+        return {}
+
+    def creative_event(self,creative_id):
+        row=self.conn.execute('SELECT * FROM creative WHERE creative_id=?',(creative_id,)).fetchone()
+        if not row:return None
+        event=super().get_event(row['event_id'])
+        if not event:return None
+        basis=self.creative_basis(row)
+        if not basis:
+            event.update(creative_id=creative_id,title='原始生成依据版本缺失',source_snapshots=[],
+                assessment={'summary':'无法核对这条创意生成时的依据；后续事件判断不能替代原始版本。'},
+                risk_assessment=self.event_risk({}))
+            return event
+        event.update(assessment=basis,title=basis.get('title',event['title']),
+            risk_assessment=self.event_risk(basis),source_snapshots=[],creative_id=creative_id)
+        for eid,version in basis.get('source_versions',{}).items():
+            source=self.conn.execute('SELECT * FROM evidence_version WHERE evidence_id=? AND content_hash=?',(eid,version)).fetchone()
+            if source:event['source_snapshots'].append(dict(source))
+        return event
 
     def creative_feed(self,limit=100,*,held=False):
         result=[]

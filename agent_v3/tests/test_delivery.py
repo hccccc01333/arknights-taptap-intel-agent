@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from jsonschema import Draft202012Validator,ValidationError
+from agent_v2.store import now_iso
 from agent_v3 import work,enrichment
 from agent_v3.store import Store
 from agent_v3.discovery import scan,queue,read_topic
@@ -17,6 +18,7 @@ from agent_v3.tests.test_v3 import source,output,approve_test_topic
 class DeliveryTests(unittest.TestCase):
     def setUp(self):
         self.store=Store(':memory:');self.item=source()
+        self.item['published_at']=now_iso()
         self.item['body']='假期越来越多人希望放慢生活节奏，减少打卡和任务压力。这里是实际测试来源的正文语境，用来验证生活需求可以成为待测试的增长假设。'
         self.store.upsert_evidence(self.item);self.store.conn.commit();scan(self.store)
         self.tid=queue(self.store)[0]['topic_id'];self.eid=self.item['evidence_id'];approve_test_topic(self.store,self.tid)

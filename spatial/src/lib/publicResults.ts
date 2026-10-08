@@ -17,12 +17,13 @@ export async function loadPublicResults(refresh=false):Promise<any>{
    const data=await response.json();
    if(data.schema!=='v3-public-results-1'||!data.overview||!data.topics||!data.events)throw Error('成果数据格式不兼容，请等待网站更新。');
    current=data;return data;
-  }finally{window.clearTimeout(timer);pending=null;}
+  }catch(error){if(error instanceof Error&&error.name==='AbortError')throw Error('读取成果超时，正在自动重连。');if(error instanceof TypeError)throw Error('成果连接暂时中断，正在自动重连。');throw error;}
+  finally{window.clearTimeout(timer);pending=null;}
  })();
  return pending;
 }
-export async function publicItem(kind:'topics'|'events',id:string){
+export async function publicItem(kind:'topics'|'events'|'creative_events',id:string){
  const data=await loadPublicResults();
- if(!data[kind][id])throw Error('这项内容已更新或不在公开成果中。');
+ if(!data[kind]?.[id])throw Error('这项内容已更新或不在公开成果中。');
  return data[kind][id];
 }

@@ -1,4 +1,5 @@
 import {ResearchEvidence} from './V3Research';
+import {SourceReferences} from './V3Delivery';
 
 const time=(v?:string)=>v?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(v)):'时间未确认';
 const heatName:Record<string,string>={board_presence:'榜单收录',board_rank_rise:'同榜排名上升',imported_ranking:'导入榜单线索'};
@@ -6,7 +7,7 @@ const polarityName:Record<string,string>={positive:'正面',neutral:'正常中�
 
 export function RiskNotice({value}:{value:any}){
  if(!value)return null;
- return <div className="v3-risk" data-allowed={value.growth_allowed?'yes':'no'}><b>{polarityName[value.polarity]||'风险待评估'} · {value.growth_allowed?'可评估增长机会':'停止推广创意与传播素材'}</b><p>{value.reason}</p><small>情报可保留用于监测；判断依据可在原文中复核。</small>{value.facts?.length>0&&<details><summary>核查正负面判断依据</summary>{value.facts.map((f:any,i:number)=><blockquote key={i}>{f.quote}<small>{f.evidence_id}</small></blockquote>)}</details>}</div>;
+ return <div className="v3-risk" data-allowed={value.growth_allowed?'yes':'no'}><b>{polarityName[value.polarity]||'风险待评估'} · {value.growth_allowed?'可评估增长机会':'停止推广创意与传播素材'}</b><p>{value.gate_reason||value.reason}</p><small>情报可保留用于监测；判断依据可在原文中复核。</small>{value.facts?.length>0&&<details><summary>核查正负面判断依据</summary>{value.facts.map((f:any,i:number)=><blockquote key={i}>{f.quote}<small>{f.evidence_id}</small></blockquote>)}</details>}</div>;
 }
 
 export function GameCoverage({value,openTopic}:{value:any;openTopic:(id:string)=>void}){
@@ -24,8 +25,8 @@ export function HotspotWorkbench({hotspots,candidates,topic,openTopic,Source}:{h
   <section aria-label="已解读热点">
    {!hotspots.length&&<p className="v2-empty">暂无具有解读和热度依据的热点。待研究内容保留在候选中，系统自动筛选、补查并更新。</p>}
    {hotspots.map(h=><button className="v3-topic" key={h.topic_id} onClick={()=>openTopic(h.topic_id)}>
-    <small>{h.payload.heat_evidence?.length?'热点解读':'事件解读'} · 更新 {time(h.created_at)}</small><h3>{h.payload.headline}</h3><p>{h.payload.one_line}</p>
-    <small>{h.payload.heat_evidence.map((e:any)=>`${heatName[e.kind]||e.kind}${e.channel_id?` · ${e.channel_id}`:''}`).slice(0,3).join(' / ')}</small>
+    <small>解读 {time(h.created_at)}{h.current_heat_evidence?.some((e:any)=>e.observed_at||e.to_at)&&` · 榜单观测 ${time(h.current_heat_evidence.map((e:any)=>e.observed_at||e.to_at||'').sort().at(-1))}`}</small><h3>{h.payload.headline}</h3><p>{h.payload.one_line}</p>
+    <small>{(h.current_heat_evidence||h.payload.heat_evidence).map((e:any)=>`${heatName[e.kind]||e.kind}${e.channel_id?` · ${e.channel_id}`:''}`).slice(0,3).join(' / ')}</small>
    </button>)}
    {candidates.length>0&&<details className="v3-candidates"><summary>候选与待补线索 · {candidates.length} 条展示记录</summary>
     <p className="v2-muted">这里是采集线索，尚未全部形成热点。你可以核查；后台处理无需逐条点击。</p>
@@ -40,7 +41,7 @@ export function HotspotWorkbench({hotspots,candidates,topic,openTopic,Source}:{h
     {interpretation.views.length>0&&<section><h3>讨论焦点</h3><p className="v2-muted">基于有限样本归纳，不代表所有用户。</p>{interpretation.views.map((v:any,i:number)=><article key={i}><p>{v.text}</p><small>{v.kind==='actual_comment'?`实际评论${v.sample_count?` · ${v.sample_count} 条依据`:''}`:'报道转述观点'}</small></article>)}</section>}
     {interpretation.controversies.length>0&&<section><h3>质疑与争议</h3>{interpretation.controversies.map((v:any,i:number)=><p key={i}>{v.text}</p>)}</section>}
     {interpretation.unknowns.length>0&&<section><h3>尚未确认</h3><ul>{interpretation.unknowns.map((s:string,i:number)=><li key={i}>{s}</li>)}</ul></section>}
-    {topic.followups?.length>0&&<section><h3>自动补查</h3>{topic.followups.filter((f:any)=>f.status!=='superseded').map((f:any)=><details key={f.followup_id}><summary>{f.question} · {({pending:'已安排',running:'正在补查',deferred:'等待重试',resolved:'已查证',awaiting_source:'等待新证据'} as any)[f.status]||f.status}</summary><p>已尝试 {f.attempts} 次{f.status==='deferred'&&` · 再查 ${time(f.retry_at)}`}</p>{f.payload.resolution&&<p>{f.payload.resolution.reason}</p>}{f.payload.history?.map((h:any,i:number)=><p key={i}>{time(h.at)} · {h.answer?.reason}</p>)}</details>)}</section>}
+    {topic.followups?.length>0&&<section><h3>自动补查</h3>{topic.followups.filter((f:any)=>f.status!=='superseded').map((f:any)=><details key={f.followup_id}><summary>{f.question} · {({pending:'已安排',running:'正在补查',deferred:'等待重试',resolved:'已查证',awaiting_source:'等待新证据'} as any)[f.status]||f.status}</summary><p>已尝试 {f.attempts} 次{f.status==='deferred'&&` · 再查 ${time(f.retry_at)}`}</p>{f.payload?.resolution&&<p>{f.payload?.resolution.reason}</p>}{f.payload?.history?.map((h:any,i:number)=><p key={i}>{time(h.at)} · {h.answer?.reason}</p>)}</details>)}</section>}
     {topic.tracked_events?.length>0&&<details><summary>系统跟踪进展</summary>{topic.tracked_events.map((e:any)=><section key={e.tracked_id}><h4>当前来源的观测记录</h4>{e.timeline?.slice(0,8).map((n:any,i:number)=><p key={i}>{time(n.observed_at)} · {n.payload?.note||({source_added:'纳入事件跟踪',content_version:'保存正文版本',channel_observed:'观察到渠道收录',board_rank_rise:'榜单排名上升'} as any)[n.kind]||'新增事件观测'}</p>)}</section>)}</details>}
     <details><summary>核查解读的引用</summary>{['background','core','timeline','views','controversies'].flatMap(k=>interpretation[k]||[]).map((c:any,i:number)=><section key={i}><p>{c.text}</p>{c.facts.map((f:any,j:number)=><blockquote key={j}>{f.quote}<small>{f.evidence_id}</small></blockquote>)}</section>)}</details>
    </>:<><h2>待研究线索</h2><p>这条采集记录尚未形成可用解读，不能据此确定事件背景或玩家需求。</p></>}
@@ -69,6 +70,6 @@ export function GameSignal({item,openTopic}:{item:any;openTopic:(id:string)=>voi
   <RiskNotice value={item.risk_assessment}/>
   <h4>{p.title}</h4><p><b>涉及场景</b> {p.game_context}</p><p><b>观察到的变化</b> {p.observed_change}</p>
   <p><b>为何关注</b> {p.why_it_matters}</p>{p.hypothesis&&<p><b>影响假设 · 待验证</b> {p.hypothesis}</p>}
-  <p><b>继续观察</b> {p.next_watch}</p><details><summary>核查依据</summary>{p.facts.map((f:any,i:number)=><blockquote key={i}>{f.quote}<small>{f.evidence_id}</small></blockquote>)}<button className="v2-secondary" onClick={()=>openTopic(item.topic_id)}>查看事件解读与原文</button></details>
+  <p><b>继续观察</b> {p.next_watch}</p><SourceReferences ids={(p.facts||[]).map((f:any)=>f.evidence_id)}>{p.facts?.map((f:any,i:number)=><blockquote key={i}>{f.quote}</blockquote>)}</SourceReferences><button className="v2-secondary" onClick={()=>openTopic(item.topic_id)}>查看事件解读与原文</button>
  </article>;
 }

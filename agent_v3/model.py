@@ -50,6 +50,11 @@ def set_zen_quota(store,hold):
 
 def gate(store,selected=None):
     selected=selected or model_status(store.model_setting())["model"]
+    hold=store.conn.execute("SELECT value FROM settings WHERE key=?",('provider_hold:'+scope(selected),)).fetchone()
+    if hold and json.loads(hold[0]).get('hold'):
+        return {'status':'deferred','scope':scope(selected),'reason':'用户确认模型额度不足，AI 等待恢复',
+            'observed_at':json.loads(hold[0])['updated_at'],'retry_at':None,'manual_resume':True,
+            'note':'采集继续；恢复额度并明确解除暂停前，不自动尝试付费调用。'}
     quota=zen_quota(store)
     if selected.startswith("opencode/") and quota["hold"]:
         return {"status":"deferred","scope":"opencode:free","reason":QUOTA_REASON,
@@ -60,6 +65,16 @@ def gate(store,selected=None):
         ('OpenCode Zen 免费层拒绝调用（HTTP 403）','模型服务限流','免费模型日额度耗尽')))
         ORDER BY retry_at DESC LIMIT 1""",(now_iso(),scope(selected),selected)).fetchone()
     return {"status":"deferred",**dict(row),"note":"重试时间是系统退避时间，不代表供应商额度已恢复。"} if row else {"status":"ready","model":selected}
+
+def set_provider_hold(store,model,hold):
+    if type(hold) is not bool:raise ValueError('暂停状态需为布尔值')
+    value={'hold':hold,'updated_at':now_iso()}
+    with store.conn:store.conn.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',
+        ('provider_hold:'+scope(model),json.dumps(value,ensure_ascii=False)))
+    if not hold and gate(store,model)['status']=='ready':
+        from .work import wake_provider_work
+        wake_provider_work(store)
+    return value
 
 
 def failure(store,model,error,*,observed_at=None):
@@ -143,6 +158,10 @@ class GatedModel:
             failure(self.store,self.model,error)
             raise
     def decide(self,messages,definitions):
+        cooldown=gate(self.store,self.model)
+        if cooldown['status']=='deferred':
+            from L4_intelligence.intelligence.llm import LLMUnavailable
+            raise LLMUnavailable(cooldown['reason'])
         try:
             result=self.client.decide(messages,definitions);self.model=self.client.model
             return result

@@ -69,6 +69,20 @@ def router(current_user):
         try:return service.read('tracked_event',tracked_id)
         except ValueError as error:raise HTTPException(404,str(error)) from error
 
+    @result.get('/creative-sources/{creative_id}')
+    def creative_sources(creative_id:str,user=Depends(current_user)):
+        value=service.read('creative_event',creative_id)
+        if value is None:raise HTTPException(404,'创意依据不存在')
+        return value
+
+    @result.get('/sources')
+    def sources(ids:str='',user=Depends(current_user)):
+        import re
+        values=list(dict.fromkeys(ids.split(','))) if ids else []
+        if len(values)>20 or any(not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',v) for v in values):
+            raise HTTPException(400,'一次最多核查20条有效来源')
+        return service.read('sources',values)
+
     @result.get('/event-relations/{pair_id}')
     def relation(pair_id:str,user=Depends(current_user)):
         try:return service.read('relation',pair_id)

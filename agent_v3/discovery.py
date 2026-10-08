@@ -43,11 +43,12 @@ def scan(store, hours=168):
             confirmed,_=confirmed_sources(store,tid)
             own={m['evidence_id'] for m in members}
             if confirmed:members=list(members)+[e for e in store.evidence(confirmed) if e['evidence_id'] not in own]
-            signals=[]; channels=set(); platforms=set(); signature=[]; priority=0
+            signals=[]; channels=set(); platforms=set(); signature=[]; content_signature=[]; priority=0
             for member in members:
                 eid=member["evidence_id"]; platforms.add(member["platform"])
                 if member['kind']=='news':signals.append({'kind':'news_publication','evidence_id':eid,'published_at':member['published_at'],'note':'新闻发布线索，尚未证明热度升温'})
                 signature.append([eid,stable_id("text_",member["title"]+"\n"+member["body"]),member['url'],member['published_at']])
+                content_signature.append(signature[-1])
                 observations=store.conn.execute("SELECT * FROM channel_observation WHERE evidence_id=? AND observed_at>=? ORDER BY observed_at",(eid,cutoff)).fetchall()
                 groups={}
                 for obs in observations:groups.setdefault(obs["channel_id"],[]).append(obs)
@@ -67,8 +68,14 @@ def scan(store, hours=168):
             research_versions=[[r['evidence_id'],stable_id('text_',r['title']+'\n'+r['body']),r['state'],r['role']] for r in store.conn.execute('''
               SELECT e.evidence_id,e.title,e.body,r.state,r.role FROM research_link r JOIN evidence e USING(evidence_id)
               WHERE r.topic_id=? ORDER BY e.evidence_id''',(tid,))]
-            if research_versions:signature.append(['research',research_versions])
+            if research_versions:
+                signature.append(['research',research_versions])
+                content_signature.append(['research',[[r['evidence_id'],stable_id('text_',r['title']+'\n'+r['body']),r['state'],r['role'],r['url'],r['published_at']] for r in store.conn.execute('''
+                  SELECT e.evidence_id,e.title,e.body,e.url,e.published_at,r.state,r.role FROM research_link r JOIN evidence e USING(evidence_id)
+                  WHERE r.topic_id=? ORDER BY e.evidence_id''',(tid,))]])
             fingerprint=stable_id("revision_",dump(sorted(signature,key=dump)))
+            from .revisions import revision
+            fingerprint=revision(store,tid,content_signature,{'channels':sorted(channels),'signals':signals},fingerprint)
             topic=store.conn.execute("SELECT * FROM topic WHERE topic_id=?",(tid,)).fetchone()
             if not topic["reviewed_fingerprint"]:priority+=1
             store.conn.execute("UPDATE topic SET fingerprint=?,priority=?,signals=?,eligible=1 WHERE topic_id=?",(fingerprint,priority,dump(signals),tid))

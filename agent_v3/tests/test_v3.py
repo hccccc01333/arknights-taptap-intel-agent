@@ -135,6 +135,8 @@ class V3Tests(unittest.TestCase):
         with self.assertRaises(ValueError):tools.validate_asset(asset,{self.eid})
 
     def test_scripted_delivery_saves_reusable_assets_and_reviews_topic(self):
+        self.store.upsert_evidence({**self.item,'published_at':now_iso()});self.store.conn.commit();scan(self.store)
+        approve_test_topic(self.store,self.tid)
         value=output(self.store,self.tid);rid=self.store.create_run('测试跨领域机会')
         model=ScriptedModel([('read_topic',{'topic_id':self.tid}),('finish_research',value)])
         result=run_agent(self.store,rid,model)
