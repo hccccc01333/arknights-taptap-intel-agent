@@ -149,7 +149,7 @@ class TestPreflight(unittest.TestCase):
             pf = sch.preflight()
         self.assertFalse(pf["ok"])
         self.assertIn("requests", pf["missing"])
-        self.assertIn("python.exe", pf["hint"], "建议里应给出可直接复制的解释器路径")
+        self.assertIn(f'"{pf["interpreter"]}"', pf["hint"], "建议里应给出可直接复制的解释器路径")
         self.assertIn("scheduler.py", pf["hint"])
 
     def test_survives_module_without_spec(self):

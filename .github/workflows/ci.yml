@@ -38,8 +38,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      # 六层主链测试（stdlib only；langgraph 相关用例未装时自动跳过）
-      - name: Run unit tests (per layer, stdlib only)
+      - name: Install dependencies for API regression checks
+        run: python -m pip install requests beautifulsoup4 jsonschema fastapi httpx
+
+      # Optional LangGraph integration is skipped when its runtime is absent.
+      - name: Run unit tests per layer
         run: |
           python -m unittest discover -s L3_semantic/tests -p "test_*.py"
           python -m unittest discover -s L3_trend/tests -p "test_*.py"

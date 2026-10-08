@@ -85,7 +85,7 @@ def preflight() -> dict[str, Any]:
         "missing": missing,
         "interpreter": sys.executable,
         "hint": (f"当前解释器缺依赖：{', '.join(missing)}。"
-                 f"请用装了依赖的解释器运行本调度器，例如：\n    \"{VENV_HINT}\" "
+                 f"请用装了依赖的解释器运行本调度器，例如：\n    \"{sys.executable}\" "
                  f"runtime/scheduler.py --once") if missing else None,
     }
 
