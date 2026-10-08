@@ -126,8 +126,10 @@ class Library15Tests(unittest.TestCase):
         with self.assertRaises(ValueError):set_provider_hold(self.s,'deepseek-flash','false')
 
     def test_public_snapshot_has_readable_references_and_honest_quota_status(self):
-        creative=self.deliver();set_provider_hold(self.s,'deepseek-flash',True);self.s.set_model('deepseek-flash')
-        before=self.s.conn.total_changes;data=public_site.snapshot(self.s)
+        creative=self.deliver();set_provider_hold(self.s,'deepseek-flash',True)
+        before=self.s.conn.total_changes
+        with patch.object(self.s,'model_setting',return_value='deepseek-flash'):
+            data=public_site.snapshot(self.s)
         self.assertEqual(self.s.conn.total_changes,before)
         self.assertEqual(data['overview']['publication']['automation_status']['ai'],'waiting_quota')
         self.assertEqual(data['overview']['creatives'][0]['delivery_meta']['event_title'],'创作者展示地图分享与组队挑战玩法')
