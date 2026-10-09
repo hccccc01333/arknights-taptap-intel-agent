@@ -43,7 +43,7 @@ def _process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
     except Exception as error:
         # Missing credentials is actionable; collection and pending tasks are retained.
         from .model import model_status, failure
-        selected=model_status(store.model_setting())["model"]
+        selected=model_status(store.model_setting(),store)["model"]
         failure(store,selected,error)
         work.defer_due(store,gate(store,selected))
         return {**result,"status":"ai_unavailable","model":selected,"error":str(error)[:400] or "模型服务配置不可用，情报任务已保留"}

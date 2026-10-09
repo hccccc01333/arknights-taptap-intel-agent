@@ -21,6 +21,15 @@ def router(current_user):
     @result.get("/overview")
     def overview(user=Depends(current_user)):return service.overview()
 
+    @result.get('/models')
+    def models(user=Depends(current_user)):
+        operator(user)
+        from .store import Store
+        from .providers import listing
+        store=Store()
+        try:return listing(store)
+        finally:store.close()
+
     @result.post("/cycles")
     def cycle(body:CycleBody,user=Depends(current_user)):
         operator(user)

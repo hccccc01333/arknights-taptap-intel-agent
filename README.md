@@ -2,7 +2,7 @@
 
 **持续追踪全网热点，自动研究与积累游戏情报、可用素材，从中识别并产出 TapTap 增长创意的 AI Agent 系统。**
 
-[![版本](https://img.shields.io/badge/version-3.0.0--alpha.17-087f8c)](docs/版本记录.md)
+[![版本](https://img.shields.io/badge/version-3.0.0--alpha.18-087f8c)](docs/版本记录.md)
 [![CI](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml)
 [![网站部署](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml)
 
@@ -16,7 +16,22 @@
 
 初次了解项目，可以先看[交付内容](#系统交付什么)和[Agent 分工](#agent-如何工作)；想了解实现，可以继续看[技术栈](#实际技术栈)、[V3 数据链路](#v3-的数据如何变成成果)、[GraphRAG 的实现](#graphrag-思想在-v3-中怎么落地)和[LangGraph 的使用范围](#langgraph-在项目中怎么用)。启动步骤见[本地运行](#本地运行)。
 
-## Alpha17 更新
+## Alpha18 更新
+
+新增“主流供应商预设＋自定义接口”，本地运营账号从页头“模型设置”保存配置并选择使用。主 Agent 与研究子 Agent 共用所选配置，自动采集、研究与归类交付继续按原有计划运行。
+
+| 更新 | 实际变化 |
+| --- | --- |
+| 13类供应商预设 | OpenAI、Claude、Gemini、Grok、DeepSeek、千问、GLM、Kimi、MiniMax、豆包、硅基流动、OpenRouter、Ollama |
+| 自定义配置 | 可改基础地址、实际模型 ID、密钥环境变量名；同一家供应商可保存多份配置，不必改代码白名单 |
+| 三种协议 | OpenAI Chat Completions、Responses 与 Anthropic Messages，分别处理请求参数、最终文本和用量 |
+| 推理与输出预算 | 各家使用各自参数，思考开关、强度、思考 token 及结构化输出可配置；所有结果通过同一套本地业务与证据校验 |
+| 配置与运行保护 | 保存未启用配置不发起请求；运行中禁止改配置，旧配置交付被版本检查拒绝；既有额度暂停继续生效 |
+| 验证 | 新增20项供应商测试，共444项后端回归；本地设置持久化、角色限制、键盘操作及390px布局使用隔离库验证 |
+
+使用步骤、供应商地址表、参数差异和验证边界见[模型供应商与自定义配置](docs/V3-模型供应商与自定义配置.md)。本轮没有付费模型调用，不宣称13家都已用真实账户在线验收。
+
+## Alpha17 图谱更新
 
 | 更新 | 实际变化 |
 | --- | --- |
@@ -107,6 +122,7 @@ flowchart TD
 
 | 已有适配器 | 调用方式 | 说明 |
 | --- | --- | --- |
+| [`providers.py`](agent_v3/providers.py) + [`provider_adapter.py`](agent_v3/provider_adapter.py) | 可配置的 Chat Completions、Responses 和 Claude Messages | Alpha18 的13类预设与自定义接口；配置持久化，密钥只引用环境变量，读取最终 JSON 并保留真实模型及用量 |
 | [`deepseek.py`](agent_v3/deepseek.py) | 直接请求 DeepSeek 官方 Chat Completions API | 当前生产配置为 `deepseek-flash`；读取接口返回的实际模型名，支持推理强度和阶段输出预算 |
 | [`opencode_zen.py`](agent_v3/opencode_zen.py) | 通过 OpenCode 的运行接口调用 Zen 模型 | 保留免费模型接入；免费额度耗尽或服务拒绝时保留任务并暂停，不能把“免费”理解成一直可用 |
 | [`space_bunny.py`](agent_v3/space_bunny.py) | 直接请求 Space Bunny API | 独立供应商接入，与 OpenCode Zen 分开配置和记录 |
@@ -183,7 +199,7 @@ Alpha17 进一步建立增量实体—事件—主张—需求图谱。游戏别
 
 [`task_packets.py`](agent_v3/task_packets.py)把来源整理成有大小上限的任务包，并从已读内容生成 `quote_candidates`。每个候选引用有一个整数 `ref`，绑定实际来源编号与逐字文本。模型选择 `fact_refs` / `basis_refs`，程序再还原引用，减少模型自行编造来源编号或“网友原话”的空间。
 
-[`contracts.py`](agent_v3/contracts.py)是主、子 Agent 共用的交付入口：阶段对应执行角色，输入包带版本指纹，所有适配器返回相同的 `result` 和运行元数据，并接受同一套本地 Schema 与引用检查。DeepSeek、Space Bunny、OpenCode Zen 使用各自的传输接口；现有普通 Chat Completions 客户端也通过适配进入这套业务契约。换供应商不会换成另一套宽松的业务规则。
+[`contracts.py`](agent_v3/contracts.py)是主、子 Agent 共用的交付入口：阶段对应执行角色，输入包带版本指纹，所有适配器返回相同的 `result` 和运行元数据，并接受同一套本地 Schema 与引用检查。DeepSeek、Space Bunny、OpenCode Zen 使用各自的传输接口；Alpha18 的 Chat、Responses 与 Claude 配置也进入同一契约。适配层只读取最终文本，隔离各家推理内容，交付记录包含实际返回的模型名与配置版本。换供应商不会换成另一套宽松的业务规则。
 
 以当前 DeepSeek 接入为例，响应处理顺序为：
 
@@ -394,17 +410,20 @@ npm run dev -- --host 127.0.0.1 --port 5182 --strictPort
 
 打开 `http://127.0.0.1:5182/`。本地开发账号为 `运营A` 或 `观察E`，密码 `demo`；它们用于本机开发，不应作为公网 API 的认证配置。后台启动后自动调度，既有启停偏好会保留。运行数据位于 `data/v3/`，不会提交到 GitHub。
 
-生产默认推理强度 `low`，单次总输出预算16,384 token，包含推理和最终输出。DeepSeek 接入、响应字段隔离与实际模型名称见[模型文档](docs/V3-DeepSeek.md)。模型调用需要自己的可用额度。
+以上是原有 DeepSeek 的启动方式。后台启动后，也可以通过 V3 页头“模型设置”选择13类供应商预设或自定义接口，保存模型、基础地址和密钥环境变量名，再选择“切换使用”；未启用配置的保存不发起请求。GitHub Pages 的公开页不提供后台配置入口。步骤及完整预设表见[配置文档](docs/V3-模型供应商与自定义配置.md)。
+
+原有 DeepSeek 生产默认推理强度 `low`，单次总输出预算16,384 token，包含推理和最终输出；新配置独立设置参数，服务之间不能混用思考字段。DeepSeek 接入、响应字段隔离与实际模型名称见[模型文档](docs/V3-DeepSeek.md)。模型调用需要自己的可用额度。
 
 如果既有数据库保存了“用户确认额度不足”的暂停，补上 API key 或重启不会解除暂停；需在确认额度恢复后由维护者明确解除。普通来源失败和服务限流则按已记录的退避策略处理。
 
 ## 当前验证与边界
 
-截至2026-10-09，V3 Alpha17 已通过424项后端回归，包含26项新增图谱及自动恢复测试；TypeScript 检查、前端生产构建、线上桌面／390px移动端浏览和独立备份恢复也已通过。已有真实采集、研究、游戏情报、可编辑素材和增长创意记录，版本和失败可追溯。
+截至2026-10-09，V3 Alpha18 已通过444项后端回归，包含20项新增供应商测试及此前26项图谱与自动恢复测试；TypeScript 检查、前端生产构建、桌面／390px移动端浏览和独立备份恢复通过。已有真实采集、研究、游戏情报、可编辑素材和增长创意记录，版本和失败可追溯。
 
 | 验证层次 | 已确认的结果 | 结论范围 |
 | --- | --- | --- |
 | 契约与恢复 | 模拟模型、隔离 SQLite 验证引用、租约、幂等、版本、图谱及工具边界，独立恢复历史数据和截图 | 验证执行机制；不能证明模型语义判断准确 |
+| 模型配置与协议 | 13类预设执行同一 Main／Research 契约，三种协议只提取最终文本；配置保存、切换和角色限制通过 | 模拟响应验证适配；实际账户权限、网络和业务质量仍待有额度时验证 |
 | 自动后台 | 本轮真实后台自动采集并建立图索引，额度暂停保留，模型调用次数为0 | 自动生产无需页面按钮；暂停期间不生成新的 AI 交付 |
 | 公开阅读 | 五入口、来源核查、复制、Markdown下载及桌面／移动端布局通过 | 网页展示已发布成果；GitHub Pages 不运行后台 |
 | 图检索小样本 | 4条合成事件及人工给定关系验证事件身份、主题与别名边界，可用本地 BGE 对照召回 | 检索使用额外结构化标注，不能据此宣称优于 BGE 或证明真实抽取质量 |
@@ -412,7 +431,7 @@ npm run dev -- --host 127.0.0.1 --port 5182 --strictPort
 开发者可以用下列命令检查图谱行为和前端构建。这些命令不调用付费模型；图谱评估使用合成数据，依赖和本地权重缺失时会报告实际使用的路径。完整回归模块列表见 [CI 配置](.github/workflows/ci.yml)。
 
 ```powershell
-python -X utf8 -m unittest agent_v3.tests.test_graph17 agent_v3.tests.test_runtime16 -q
+python -X utf8 -m unittest agent_v3.tests.test_providers18 agent_v3.tests.test_graph17 agent_v3.tests.test_runtime16 -q
 python -X utf8 scripts/evaluate_graph17.py
 cd spatial
 npx tsc --noEmit
@@ -430,6 +449,7 @@ npm run build
 | `agent_v3/graph_entities.py`、`knowledge_graph.py` | 注册实体消歧、来源版本及增量实体—事件—主张—需求索引 |
 | `agent_v3/graph_retrieval.py`、`graph_ai.py` | Local／Global检索、社区发现、带引用的抽取与摘要缓存 |
 | `agent_v3/runtime_guard.py`、`contracts.py`、`tool_executor.py` | 租约及依据版本检查、统一主／子交付契约、工具执行与预算台账 |
+| `agent_v3/providers.py`、`provider_adapter.py` | 供应商预设与自定义配置、三种协议、推理／输出参数及最终文本隔离 |
 | `agent_v3/task_packets.py`、`freshness.py`、`risk.py` | 结构化输出与引用、时效和传播风险约束 |
 | `agent_v3/work.py`、`followups.py`、`revisions.py` | 业务待办、证据补查、内容与观测版本 |
 | `agent_v3/presentation.py`、`public_site.py` | 阅读视图与公开成果导出／同步 |
@@ -441,6 +461,7 @@ npm run build
 | `scripts/` | 公开成果导出、版本快照等辅助工具 |
 | `docs/` | 设计、实测、部署与版本记录 |
 
+- [模型供应商与自定义配置](docs/V3-模型供应商与自定义配置.md)
 - [实体事件图谱与 GraphRAG 检索](docs/V3-实体事件图谱与GraphRAG检索.md)
 - [自动执行可靠性与统一契约](docs/V3-自动执行可靠性与统一契约.md)
 - [自动交付与补查闭环](docs/V3-自动交付与补查闭环.md)

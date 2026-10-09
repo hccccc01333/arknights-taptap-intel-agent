@@ -205,6 +205,7 @@ export const v2Api = {
 
 export const v3Api = {
   login:v2Api.login, me:v2Api.me,
+  models:()=>request<any>('/api/v3/models'),
   overview:()=>isPublicResults?loadPublicResults(true).then(d=>d.overview):request<any>('/api/v3/overview'),
   cycle:(body:any)=>request<any>('/api/v3/cycles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
   run:(id:string)=>request<any>('/api/v3/runs/'+encodeURIComponent(id)),

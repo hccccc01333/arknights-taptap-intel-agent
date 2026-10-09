@@ -41,12 +41,20 @@ class Store(RuntimeStore, EvidenceStore):
         return inserted
 
     def reasoning_setting(self):
+        from .providers import get
+        profile=get(self,self.model_setting())
+        if profile:return profile['reasoning_effort']
         from .deepseek import ALIASES
         key="deepseek_reasoning_effort" if self.model_setting() in ALIASES else "space_bunny_reasoning_effort" if self.model_setting()=="spacebunny/space-bunny-alpha" else "zen_reasoning_effort"
         row=self.conn.execute("SELECT value FROM settings WHERE key=?",(key,)).fetchone()
         return json.loads(row[0]) if row else "low"
 
     def set_reasoning(self,value):
+        from .providers import get,save
+        profile=get(self,self.model_setting())
+        if profile:
+            save(self,{**profile,'reasoning_effort':value})
+            return {'effort':value}
         from .opencode_zen import REASONING_EFFORTS
         from .deepseek import ALIASES, EFFORTS as DEEPSEEK_EFFORTS
         deepseek=self.model_setting() in ALIASES
@@ -64,11 +72,19 @@ class Store(RuntimeStore, EvidenceStore):
         return {"effort":value}
 
     def output_setting(self):
+        from .providers import get
+        profile=get(self,self.model_setting())
+        if profile:return profile['output_limit']
         from .deepseek import DEFAULT_OUTPUT_LIMIT
         row=self.conn.execute("SELECT value FROM settings WHERE key='deepseek_output_limit'").fetchone()
         return json.loads(row[0]) if row else DEFAULT_OUTPUT_LIMIT
 
     def set_output(self,value):
+        from .providers import get,save
+        profile=get(self,self.model_setting())
+        if profile:
+            save(self,{**profile,'output_limit':value})
+            return {'max_tokens':value}
         if type(value) is not int or not 256<=value<=32768:
             raise ValueError("DeepSeek 输出总预算需为 256 至 32768 token")
         self.conn.execute("INSERT INTO settings VALUES('deepseek_output_limit',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(dump(value),))
@@ -77,6 +93,12 @@ class Store(RuntimeStore, EvidenceStore):
 
     def set_model(self,value):
         if not isinstance(value,str):raise ValueError("请选择已支持的模型配置")
+        if value.startswith('profile/'):
+            from .providers import get,status
+            result=status(get(self,value))
+            if not result['configured']:raise ValueError('请先配置所选供应商的 API Key 环境变量')
+            self.conn.execute("INSERT INTO settings VALUES('model',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(dump(value),));self.conn.commit()
+            return result
         from .deepseek import ALIASES, status as deepseek_status
         if value in ALIASES:
             result=deepseek_status(value)

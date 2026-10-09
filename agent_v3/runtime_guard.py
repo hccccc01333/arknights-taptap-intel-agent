@@ -119,6 +119,9 @@ def basis(store, topic_id, fingerprint=None, *, packet=None, context=True):
         for e in packet.get('evidence', []):
             sources[e['evidence_id']] = {k:e.get(k) for k in ('content_hash','url','published_at')}
     result = {'topics':{topic_id:row[0]}, 'sources':sources}
+    from .providers import get,fingerprint as profile_fingerprint
+    profile=get(store,store.model_setting())
+    if profile:result['model_profile']={'model':store.model_setting(),'version':profile_fingerprint(profile)}
     if context:
         result['context_version'] = stable_id('context_',dump(store.context()))
     if packet and packet.get('graph_context'):
@@ -205,6 +208,11 @@ class RuntimeStore:
     def check_basis(self, expected):
         if not expected:
             return
+        if expected.get('model_profile'):
+            from .providers import get,fingerprint as profile_fingerprint
+            profile=get(self,self.model_setting())
+            if not profile or expected['model_profile']!={'model':self.model_setting(),'version':profile_fingerprint(profile)}:
+                raise StaleBasis('模型配置已变化，拒绝过期交付')
         if expected.get('graph_version') is not None:
             from .knowledge_graph import graph_version
             if graph_version(self)!=expected['graph_version']:raise StaleBasis('图谱索引已变化，拒绝过期交付')

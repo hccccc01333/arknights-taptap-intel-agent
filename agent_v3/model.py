@@ -7,21 +7,29 @@ from agent_v2.store import now_iso
 from .opencode_zen import OpenCodeModel, StructuredDeliveryError, ZEN_MODELS, status as zen_status
 from .space_bunny import SpaceBunnyModel, MODEL as SPACE_BUNNY_MODEL, status as bunny_status
 from .deepseek import DeepSeekModel, ALIASES as DEEPSEEK_MODELS, status as deepseek_status
+from . import providers
+from .provider_adapter import ProfileModel
 
 
-def model_status(selected=None):
+def model_status(selected=None,store=None):
     selected = selected or legacy_status()["model"]
+    if selected.startswith('profile/'):
+        if store is None:return {'model':selected,'configured':False,'note':'需读取已保存的模型配置','fallback_model':None}
+        return providers.status(providers.get(store,selected))
     if selected in DEEPSEEK_MODELS:return deepseek_status(selected)
     if selected==SPACE_BUNNY_MODEL:return bunny_status()
     return zen_status(selected) if selected.startswith("opencode/") else legacy_status(selected)
 
 
-def model_options():
-    return [deepseek_status(), bunny_status()] + [model_status("opencode/"+key) for key in ZEN_MODELS] + [model_status(m) for m in
+def model_options(store=None):
+    legacy=[deepseek_status(), bunny_status()] + [model_status("opencode/"+key) for key in ZEN_MODELS] + [model_status(m) for m in
             ("openrouter/free", "nvidia/nemotron-3-ultra-550b-a55b:free")]
+    return ([providers.status(p) for p in providers.profiles(store).values()] if store else [])+legacy
 
 
-def scope(model):
+def scope(model,store=None):
+    if model.startswith('profile/'):
+        return providers.scope(providers.get(store,model)) if store else model
     if model in DEEPSEEK_MODELS:return "deepseek:flash"
     if model==SPACE_BUNNY_MODEL:return "spacebunny:alpha"
     if model.startswith("opencode/"):return model
@@ -49,10 +57,10 @@ def set_zen_quota(store,hold):
 
 
 def gate(store,selected=None):
-    selected=selected or model_status(store.model_setting())["model"]
-    hold=store.conn.execute("SELECT value FROM settings WHERE key=?",('provider_hold:'+scope(selected),)).fetchone()
+    selected=selected or model_status(store.model_setting(),store)["model"]
+    hold=store.conn.execute("SELECT value FROM settings WHERE key=?",('provider_hold:'+scope(selected,store),)).fetchone()
     if hold and json.loads(hold[0]).get('hold'):
-        return {'status':'deferred','scope':scope(selected),'reason':'用户确认模型额度不足，AI 等待恢复',
+        return {'status':'deferred','scope':scope(selected,store),'reason':'用户确认模型额度不足，AI 等待恢复',
             'observed_at':json.loads(hold[0])['updated_at'],'retry_at':None,'manual_resume':True,
             'note':'采集继续；恢复额度并明确解除暂停前，不自动尝试付费调用。'}
     quota=zen_quota(store)
@@ -63,14 +71,14 @@ def gate(store,selected=None):
     row=store.conn.execute("""SELECT * FROM model_gate WHERE retry_at>? AND
         (scope=? OR (scope='opencode:free' AND ? LIKE 'opencode/%' AND reason IN
         ('OpenCode Zen 免费层拒绝调用（HTTP 403）','模型服务限流','免费模型日额度耗尽')))
-        ORDER BY retry_at DESC LIMIT 1""",(now_iso(),scope(selected),selected)).fetchone()
+        ORDER BY retry_at DESC LIMIT 1""",(now_iso(),scope(selected,store),selected)).fetchone()
     return {"status":"deferred",**dict(row),"note":"重试时间是系统退避时间，不代表供应商额度已恢复。"} if row else {"status":"ready","model":selected}
 
 def set_provider_hold(store,model,hold):
     if type(hold) is not bool:raise ValueError('暂停状态需为布尔值')
     value={'hold':hold,'updated_at':now_iso()}
     with store.conn:store.conn.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',
-        ('provider_hold:'+scope(model),json.dumps(value,ensure_ascii=False)))
+        ('provider_hold:'+scope(model,store),json.dumps(value,ensure_ascii=False)))
     if not hold and gate(store,model)['status']=='ready':
         from .work import wake_provider_work
         wake_provider_work(store)
@@ -92,11 +100,13 @@ def failure(store,model,error,*,observed_at=None):
         minutes=60;reason="OpenCode Zen 免费层拒绝调用（HTTP 403）"
     elif "402" in message:
         minutes=1440;reason="模型账户额度或服务配置不可用"
+    elif model.startswith('profile/') and any(code in message for code in ('400','401','403','404')):
+        minutes=1440;reason='模型接口、凭证或参数配置不可用'
     else:
         minutes=10;reason="模型响应未完成，等待重试"
     observed_at=observed_at or now_iso()
     retry=(datetime.fromisoformat(observed_at)+timedelta(minutes=minutes)).isoformat(timespec="seconds")
-    failure_scope="opencode:free" if model.startswith("opencode/") and ("403" in message or "429" in message) else scope(model)
+    failure_scope="opencode:free" if model.startswith("opencode/") and ("403" in message or "429" in message) else scope(model,store)
     with store.conn:
         store.conn.execute("""INSERT INTO model_gate VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET
           reason=excluded.reason,observed_at=excluded.observed_at,retry_at=excluded.retry_at""",
@@ -108,7 +118,7 @@ def import_failure_history(store):
     if store.conn.execute("SELECT 1 FROM settings WHERE key='v3_model_gate_migration'").fetchone():return
     for row in store.conn.execute("SELECT model,error,finished_at FROM run WHERE status='failed' AND model IS NOT NULL ORDER BY finished_at DESC LIMIT 12").fetchall():
         if row["finished_at"] and row["error"] and ("429" in row["error"] or "402" in row["error"]):
-            if not store.conn.execute("SELECT 1 FROM model_gate WHERE scope=?",(scope(row["model"]),)).fetchone():
+            if not store.conn.execute("SELECT 1 FROM model_gate WHERE scope=?",(scope(row["model"],store),)).fetchone():
                 failure(store,row["model"],row["error"],observed_at=row["finished_at"])
     with store.conn:store.conn.execute("INSERT INTO settings VALUES('v3_model_gate_migration','true')")
 
@@ -116,12 +126,14 @@ def import_failure_history(store):
 class GatedModel:
     def __init__(self,store):
         self.store=store
-        selected=model_status(store.model_setting())["model"]
+        selected=model_status(store.model_setting(),store)["model"]
         cooldown=gate(store,selected)
         if cooldown["status"]=="deferred":
             from L4_intelligence.intelligence.llm import LLMUnavailable
             raise LLMUnavailable(cooldown["reason"])
-        if selected in DEEPSEEK_MODELS:self.client=DeepSeekModel(selected,reasoning_effort=store.reasoning_setting(),output_limit=store.output_setting())
+        self.profile=providers.get(store,selected)
+        if self.profile:self.client=ProfileModel(self.profile)
+        elif selected in DEEPSEEK_MODELS:self.client=DeepSeekModel(selected,reasoning_effort=store.reasoning_setting(),output_limit=store.output_setting())
         elif selected==SPACE_BUNNY_MODEL:self.client=SpaceBunnyModel(reasoning_effort=store.reasoning_setting())
         else:self.client=OpenCodeModel(selected,reasoning_effort=store.reasoning_setting()) if selected.startswith("opencode/") else LiveModel(selected)
         self.model=self.client.model
@@ -154,7 +166,14 @@ class GatedModel:
             from L4_intelligence.intelligence.llm import LLMUnavailable
             raise LLMUnavailable(cooldown['reason'])
         try:
-            if getattr(self.client,'supports_tasks',False):return self.client.run_task(*args,**kwargs)
+            if self.profile and providers.fingerprint(providers.get(self.store,self.model))!=providers.fingerprint(self.profile):
+                from L4_intelligence.intelligence.llm import LLMUnavailable
+                raise LLMUnavailable('模型配置已变化，等待新配置下的自动运行')
+            if getattr(self.client,'supports_tasks',False):
+                result=self.client.run_task(*args,**kwargs)
+                if self.profile and providers.fingerprint(providers.get(self.store,self.model))!=providers.fingerprint(self.profile):
+                    raise StructuredDeliveryError('模型配置变化，拒绝旧配置交付',{**result,'result':None})
+                return result
             from .contracts import chat_task
             return chat_task(self.client,*args,**kwargs)
         except StructuredDeliveryError:raise
@@ -177,4 +196,5 @@ class GatedModel:
 def task_metadata(response):
     return {k:response[k] for k in ("model","api_model","usage","seconds","transport","session_id",
             "request_id","task_id","input_file","reported_cost","cost_status","reasoning_effort",
-            "output_limit","finish_reason","reasoning_present","contract_version","stage","agent_role","input_fingerprint") if k in response}
+            "output_limit","finish_reason","reasoning_present","contract_version","stage","agent_role","input_fingerprint",
+            "provider_id","profile_version") if k in response}

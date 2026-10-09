@@ -103,7 +103,7 @@ def overview():
         data.update({"channels":coverage(with_store),"topics":queue(with_store),"materials":with_store.usable_materials(limit=100),
                      "source_assets":with_store.source_assets(limit=30),"work":work.overview(with_store),"model_gate":gate(with_store),
                      "context":with_store.context(),"active_run":with_store.active_owner(),"schedule":schedule(with_store),'automatic_work':automatic_work(with_store),
-                     "model":model_status(with_store.model_setting()),"model_options":model_options(),
+                     "model":model_status(with_store.model_setting(),with_store),"model_options":model_options(with_store),
                      "zen_quota":zen_quota(with_store),
                      "reasoning":{"effort":with_store.reasoning_setting()},
                      "output":{"max_tokens":with_store.output_setting()}})
@@ -323,6 +323,9 @@ def configure(kind,value):
     store=Store()
     try:
         if kind=="context":return store.set_context(value)
+        if kind=='provider':
+            from .providers import save
+            return save(store,value)
         if kind=="zen_quota":
             if store.active_owner():raise ValueError("当前任务结束后再修改额度暂停状态")
             result=set_zen_quota(store,value.get("hold"))
@@ -330,6 +333,7 @@ def configure(kind,value):
             if cooldown["status"]=="deferred":work.defer_due(store,cooldown)
             return result
         if kind=="model":
+            store.conn.execute('BEGIN IMMEDIATE')
             if store.active_owner():raise ValueError("当前任务结束后再切换模型")
             result=store.set_model(value)
             if gate(store,value)["status"]=="ready":work.wake_provider_work(store)
