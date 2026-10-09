@@ -58,6 +58,7 @@ def schema(packet):
         'basis_refs':references(len(packet['quote_candidates']),maximum=3)})}
     from .graph_ai import extraction_schema
     result['properties']['knowledge']=extraction_schema(packet)
+    result['required'].append('knowledge')
     return result
 
 

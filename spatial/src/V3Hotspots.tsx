@@ -56,12 +56,14 @@ function GraphContext({value,topicId,openTopic}:{value:any;topicId:string;openTo
  if(!value?.events?.length)return null;
  const entities=value.events.flatMap((e:any)=>e.entities||[]).filter((e:any,i:number,a:any[])=>a.findIndex(v=>v.entity_id===e.entity_id)===i);
  const related=value.events.filter((e:any)=>e.topic_id!==topicId&&e.status==='interpreted');
+ const needs=value.events.flatMap((e:any)=>e.needs||[]);
+ if(!entities.length&&!related.length&&!needs.length&&!value.relations?.length)return null;
  const labels:Record<string,string>={FOLLOWED_BY:'有来源支持的后续进展',DEVELOPMENT:'关联进展 · 方向待核查',RELATED_TO:'相关事件 · 身份独立'};
  return <details className="v3-graph-context"><summary>涉及对象与关联事件{related.length>0?` · ${related.length} 条关联解读`:''}</summary>
   {entities.length>0&&<p><b>涉及对象</b> {entities.map((e:any)=>e.name).join('、')}</p>}
   {value.relations?.map((r:any)=><section key={r.relation_id}><h4>{labels[r.predicate]||'来源支持的关系'}</h4><p>{r.reason}</p><SourceReferences ids={(r.facts||[]).map((f:any)=>f.evidence_id)}>{r.facts?.map((f:any,i:number)=><blockquote key={i}>{f.quote}</blockquote>)}</SourceReferences></section>)}
   {related.map((e:any)=><button key={e.event_id} className="v2-secondary" onClick={()=>openTopic(e.topic_id)}>查看关联解读：{e.title}</button>)}
-  {value.events.flatMap((e:any)=>e.needs||[]).map((n:any,i:number)=><p key={i}><b>有限样本需求推断</b> {n.text}</p>)}
+  {needs.map((n:any,i:number)=><p key={i}><b>有限样本需求推断</b> {n.text}</p>)}
   <p className="v2-muted">关联事件保留各自身份与时间；共同主题和时间先后不证明热度或因果。</p>
  </details>;
 }

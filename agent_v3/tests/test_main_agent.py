@@ -47,7 +47,8 @@ class MainAgentTests(unittest.TestCase):
                         'views':[{'text':'玩家喜欢这种玩法','kind':'actual_comment','basis_refs':[1]}] if self.bad_view else [],
                         'controversies':[],'unknowns':['没有取得评论样本，不能推断总体需求'],'discussion_review':[],
                         'risk_assessment':{'polarity':'positive','level':'low','reason':'夹具为正常玩法分享，没有负面争议依据','basis_refs':[1]},
-                        'recency':{'kind':'unknown','date_iso':'','time_text':'','basis_refs':[],'reason':'测试仅提供近期来源日期'},'source_matches':[]}
+                        'recency':{'kind':'unknown','date_iso':'','time_text':'','basis_refs':[],'reason':'测试仅提供近期来源日期'},'source_matches':[],
+                        'knowledge':{'entities':[],'relations':[],'needs':[]}}
                     if getattr(self,'bad_date',False):value['recency']={'kind':'recent_event','date_iso':'2099-10-08','time_text':'2099年10月8日','basis_refs':[1],'reason':'模型不可靠日期测试'}
                 elif stage=='intelligence':
                     value={'summary':'玩法表达可转成邀请朋友一起参与的游戏内容，效果待验证。','fact_refs':[1],

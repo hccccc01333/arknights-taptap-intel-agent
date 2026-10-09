@@ -212,7 +212,7 @@ class GraphTests(unittest.TestCase):
         self.assertNotIn('pending_relations',projected);self.assertTrue(projected['sources'])
         self.assertNotIn('body',projected['sources'][0]);self.assertNotIn('content_hash',dump(projected))
 
-    def test_existing_main_child_contract_accepts_optional_extraction(self):
+    def test_existing_main_child_contract_accepts_explicit_empty_extraction(self):
         fixture=main_fixtures.MainAgentTests();fixture.setUp()
         try:
             model=fixture.model();original=model.run_task;packets=[]
@@ -227,6 +227,16 @@ class GraphTests(unittest.TestCase):
             self.assertEqual(result['status'],'intelligence_ready')
             self.assertTrue(all('graph_context' in p for s,p in packets if s in ('main_plan','interpretation','intelligence')))
             self.assertEqual(AgentContract.create('community_summary',{}, {'type':'object'}).role,'research_child')
+        finally:fixture.tearDown()
+
+    def test_child_cannot_silently_omit_graph_extraction(self):
+        fixture=main_fixtures.MainAgentTests();fixture.setUp()
+        try:
+            from agent_v3.research_child import schema
+            from jsonschema import ValidationError
+            packet=topic_packet(read_topic(fixture.store,fixture.tid),fixture.store.context());contract_schema=schema(packet)
+            value=fixture.model().run_task('interpretation',packet,contract_schema,'fixture')['result'];value.pop('knowledge')
+            self.assertRaises(ValidationError,AgentContract.create('interpretation',packet,contract_schema).validate,value,packet)
         finally:fixture.tearDown()
 
     def test_transient_db_lock_does_not_kill_scheduler(self):
