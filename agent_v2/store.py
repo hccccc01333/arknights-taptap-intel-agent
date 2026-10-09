@@ -24,11 +24,11 @@ def dump(value: Any) -> str:
 
 
 class Store:
-    def __init__(self, path: str | Path | None = None):
+    def __init__(self, path: str | Path | None = None, *, connection_factory=sqlite3.Connection):
         path = path if path is not None else ROOT / "data" / "v2" / "agent.sqlite3"
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(path), timeout=10)
+        self.conn = sqlite3.connect(str(path), timeout=10, factory=connection_factory)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript("""

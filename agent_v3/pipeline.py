@@ -11,6 +11,15 @@ from .engine import run_agent
 
 
 def process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
+    from .runtime_guard import LeaseLost
+    own_lease=store.active_owner()!=run_id
+    if not store.acquire(run_id,ttl=1200):raise LeaseLost('自动处理运行租约不可用')
+    try:return _process(store,run_id,topic_id=topic_id,model=model,selected_topics=selected_topics)
+    finally:
+        if own_lease:store.release(run_id)
+
+
+def _process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
     enqueued=work.enqueue(store,topic_id=topic_id,topic_ids=selected_topics)
     result={"enqueued":enqueued,"intelligence":[],"creative":[],"usage":{},"status":"intelligence_ready"}
     clause=" AND topic_id=?" if topic_id else ""
@@ -58,13 +67,18 @@ def process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
         first_step=store.conn.execute('SELECT COALESCE(MAX(sequence),0) FROM step WHERE run_id=?',(run_id,)).fetchone()[0]
         try:
             output=intelligence.run(store,run_id,job,model)
-            work.finish(store,job["job_id"],"succeeded",result=output)
+            work.finish(store,job,"succeeded",result=output)
             result["intelligence"].append(output)
             result["model"]=output["model"]
             for key,value in output["usage"].items():result["usage"][key]=result["usage"].get(key,0)+value
             store.step(run_id,"intelligence_saved",output)
             work.enqueue(store,topic_id=job["topic_id"],topic_ids=selected_topics)
         except Exception as error:
+            from .runtime_guard import LeaseLost,StaleBasis
+            if isinstance(error,LeaseLost):
+                if isinstance(error,StaleBasis):work.finish(store,job,'superseded',error=str(error))
+                store.step(run_id,'stale_delivery_rejected',{'job_id':job['job_id'],'reason':str(error)})
+                result.update(status='waiting_work',error=str(error));return result
             # Completed requests still incur usage when business validation fails.
             for row in store.conn.execute("SELECT payload FROM step WHERE run_id=? AND sequence>? AND kind IN ('model_task','opencode_task','intelligence_model')",(run_id,first_step)):
                 for key,value in (json.loads(row[0]).get('usage') or {}).items():
@@ -72,7 +86,7 @@ def process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
             cooldown=gate(store,getattr(model,"model",None))
             retry=cooldown.get("retry_at") or (datetime.now(timezone.utc)+timedelta(minutes=15)).isoformat(timespec="seconds")
             reason=cooldown.get("reason") or ("情报预算用完，等待重试" if isinstance(error,TimeoutError) else "情报处理未完成，等待重试")
-            work.finish(store,job["job_id"],"deferred",error=reason,retry_at=retry)
+            work.finish(store,job,"deferred",error=reason,retry_at=retry)
             store.step(run_id,"intelligence_deferred",{"job_id":job["job_id"],"error":reason,"retry_at":retry,
                                                        "detail":str(error)[:400],"session_id":getattr(model,"last_session",None)})
             result.update(status="ai_deferred",error=reason+"："+str(error)[:400])
@@ -88,12 +102,12 @@ def process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
         result["model"]=output["model"]
         for key,value in output["usage"].items():result["usage"][key]=result["usage"].get(key,0)+value
         if output["status"]=="completed":
-            work.finish(store,job["job_id"],"succeeded",result={"event_ids":output["result"]["event_ids"]})
+            work.finish(store,job,"succeeded",result={"event_ids":output["result"]["event_ids"]})
             result["creative"]=output["result"]["event_ids"];result["status"]="completed"
         else:
             cooldown=gate(store,getattr(model,"model",None))
             retry=cooldown.get("retry_at") or (datetime.now(timezone.utc)+timedelta(minutes=30)).isoformat(timespec="seconds")
-            work.finish(store,job["job_id"],"deferred",error=output["error"],retry_at=retry)
+            work.finish(store,job,"deferred",error=output["error"],retry_at=retry)
             result.update(status="ai_deferred",error=output["error"])
             if cooldown["status"]=="deferred":work.defer_due(store,cooldown)
     elif result["intelligence"] and result.get("error"):

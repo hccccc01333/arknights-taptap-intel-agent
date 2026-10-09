@@ -44,11 +44,11 @@ evidence_id 必须保留完整 evidence_ 前缀。新事件省略 event_id，它
 
 def run_agent(store: Store, run_id: str, model=None, *, max_turns=8, max_tools=16,
               timeout_seconds=360, network_budget=3, tools_factory=ResearchTools,
-              system_prompt=SYSTEM, prompt_version="growth-opportunity-v2.1") -> dict[str, Any]:
+              system_prompt=SYSTEM, prompt_version="growth-opportunity-v2.1", manage_lease=True) -> dict[str, Any]:
     row = store.get_run(run_id)
     if row is None:
         raise ValueError("运行不存在")
-    if not store.acquire(run_id, ttl=timeout_seconds+180):
+    if manage_lease and not store.acquire(run_id, ttl=timeout_seconds+180):
         store.finish(run_id, "failed", error="已有采集或研究正在执行，请查看现有任务。")
         return store.get_run(run_id)
     store.conn.execute("UPDATE run SET status='running' WHERE run_id=?", (run_id,))
@@ -141,5 +141,5 @@ def run_agent(store: Store, run_id: str, model=None, *, max_turns=8, max_tools=1
                                       "session_id":getattr(model,"last_session",None)})
         store.finish(run_id, "failed", error=str(error)[:600], model=model_name, usage=usage)
     finally:
-        store.release(run_id)
+        if manage_lease:store.release(run_id)
     return store.get_run(run_id)

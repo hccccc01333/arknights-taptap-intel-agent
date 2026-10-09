@@ -6,9 +6,18 @@ from pathlib import Path
 
 from agent_v2.store import Store as EvidenceStore, ROOT, dump, now_iso, stable_id
 from . import __version__
+from .runtime_guard import RuntimeStore, AtomicConnection
 
 
-class Store(EvidenceStore):
+class Store(RuntimeStore, EvidenceStore):
+    def get_run(self,run_id):
+        data=super().get_run(run_id)
+        if data is not None:
+            from .tool_executor import history
+            data['tool_calls']=history(self,run_id)
+            data['tool_budgets']=[dict(row) for row in self.conn.execute('SELECT * FROM tool_budget WHERE run_id=?',(run_id,))]
+        return data
+
     def context(self):
         from .taptap_profile import PROFILE
         return {**super().context(), 'product_profile': PROFILE}
@@ -91,7 +100,7 @@ class Store(EvidenceStore):
         return result
 
     def __init__(self, path=None):
-        super().__init__(path if path is not None else ROOT / "data/v3/agent.sqlite3")
+        super().__init__(path if path is not None else ROOT / "data/v3/agent.sqlite3", connection_factory=AtomicConnection)
         from .followups import initialize
         initialize(self)
         from .retention import initialize as initialize_retention
@@ -265,6 +274,8 @@ class Store(EvidenceStore):
         if "eligible" not in {r[1] for r in self.conn.execute("PRAGMA table_info(topic)")}:
             self.conn.execute("ALTER TABLE topic ADD COLUMN eligible INTEGER DEFAULT 0")
             self.conn.commit()
+        from .runtime_guard import initialize as initialize_runtime
+        initialize_runtime(self)
 
     def source_assets(self,query="",kind="",limit=60,*,evidence_ids=None):
         clauses,params=[],[]
@@ -490,8 +501,17 @@ class Store(EvidenceStore):
         from .risk import require_growth
         for assessment in assessments:
             if assessment.get('creatives'):require_growth(self,assessment.get('topic_id'),assessment.get('topic_fingerprint'))
-        with self.conn:
-            events=[]
+        from .runtime_guard import basis
+        expected=getattr(self,'_delivery_basis',None)
+        if expected is None and assessments:
+            expected={'topics':{},'sources':{},'context_version':stable_id('context_',dump(self.context()))}
+            for a in assessments:
+                if a.get('topic_id'):
+                    snapshot=basis(self,a['topic_id'],a['topic_fingerprint'])
+                    expected['topics'].update(snapshot['topics'])
+        events=[]
+        job=self._active_job if self._active_job and self._active_job['stage']=='creative' else None
+        with self.delivery(run_id,expected,job=job,result={'event_ids':events}):
             for assessment in assessments:
                 event_id=super().save_assessment(run_id,assessment)
                 events.append(event_id)

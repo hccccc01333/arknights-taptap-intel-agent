@@ -1,3 +1,4 @@
+from .contracts import run_task
 """Evidence gaps drive bounded research actions, with a model planner when available."""
 import json,re
 from datetime import datetime,timedelta,timezone
@@ -67,7 +68,7 @@ def plan(store,topic,model=None,mission=None,feedback=None):
                          'browse_page':'用隔离浏览器加载输入来源，读取动态可见文字并留截图，不登录',
                          'read_comments_visual':'评论接口失败时先定位、滑动到公开评论区，最多三屏截图识别；没有评论边界或要求登录则记录缺口。OCR日期/作者未知，不能证明翻红',
                          'screenshot_ocr':'浏览器有限滚动截图，本地中文 OCR 识别图片/画面文字，保留原图和位置；不能穿透验证码或代表完整评论'}}
-        response=model.run_task('research_plan',packet,PLAN_SCHEMA,
+        response=run_task(model,'research_plan',packet,PLAN_SCHEMA,
            '你是研究子 Agent，根据主 Agent 问题、缺口与上轮工具结果选择最多四个有必要的动作，使用当前sources数组的source_ref。优先用爬虫read_detail获取正文与sample_discussion真实讨论；静态正文不足时browse_page，动态图片文字用screenshot_ocr。评论接口失败或没有样本时可read_comments_visual，先滑动定位评论区再截图识别。搜索命中可在下一轮读取；失败不要反复重试相同动作，改查询或来源。查询只写主题词。不需要则空列表。不要预设热点必须与游戏相关，不把平台简介或 OCR 广告当评论。',timeout_seconds=60)
         Draft202012Validator(PLAN_SCHEMA).validate(response['result']);value=response['result'];planner='model'
     for a in value['actions']:
@@ -105,6 +106,8 @@ def background(store,topic_id,query):
 
 
 def run(store,*,topic_id=None,max_calls=6,model=None,run_id=None,delegations=None):
+    from .tool_executor import ToolExecutor
+    executor=ToolExecutor(store,run_id,limit=max_calls)
     from .discovery import queue,read_topic
     if delegations is not None:topics=[read_topic(store,d['topic_id']) for d in delegations[:3]]
     elif topic_id:topics=[read_topic(store,topic_id)]
@@ -192,28 +195,15 @@ def run(store,*,topic_id=None,max_calls=6,model=None,run_id=None,delegations=Non
             if a['tool']=='search_news' and p['planner']=='policy_fallback' and inspect(store,read_topic(store,p['topic_id'],include_tracking=False))['context']['status']=='present':
                 actions.append({**a,'evidence_id':eid,'result':{'calls':0,'status':'not_needed','reason':'补读已取得原始来源语境'}})
                 continue
+            result=executor.execute(a['tool'],{'topic_id':p['topic_id'],'evidence_id':eid,'query':a['query']})
             if a['tool']=='read_detail':
-                result=enrichment.prepare(store,topic_id=p['topic_id'],evidence_id=eid,max_calls=1)
-                results.extend(result['results'])
-                # An unsuccessful HTTP connector automatically escalates to rendered reading.
-                if not any(r.get('status')=='ok' for r in result['results']) and result['calls']<max_calls-calls:
+                results.extend(result.get('results',[]))
+                if not any(r.get('status')=='ok' for r in result.get('results',[])) and executor.remaining:
                     pending.insert(0,{'tool':'browse_page','source_ref':a['source_ref'],'query':''})
-            elif a['tool']=='search_news':result=background(store,p['topic_id'],a['query'])
-            elif a['tool']=='search_web':
-                from .web_research import background as web_background
-                result=web_background(store,p['topic_id'],a['query'],max_calls=min(3,max_calls-calls))
-            elif a['tool'] in ('browse_page','screenshot_ocr'):
-                from .browser_tools import read as browser_read
-                result=browser_read(store,p['topic_id'],eid,visual=a['tool']=='screenshot_ocr')
-                if a['tool']=='browse_page' and result.get('status')=='insufficient' and result['calls']<max_calls-calls:
-                    pending.insert(0,{'tool':'screenshot_ocr','source_ref':a['source_ref'],'query':''})
-            elif a['tool']=='read_comments_visual':
-                from .browser_tools import read_comments
-                result=read_comments(store,p['topic_id'],eid)
-            else:
-                result=discussion.sample(store,p['topic_id'],eid,max_calls=min(2,max_calls-calls))
-                if discussion.needs_visual(store,eid) and result['calls']<max_calls-calls:
-                    pending.insert(0,{'tool':'read_comments_visual','source_ref':a['source_ref'],'query':''})
+            elif a['tool']=='browse_page' and result.get('status')=='insufficient' and executor.remaining:
+                pending.insert(0,{'tool':'screenshot_ocr','source_ref':a['source_ref'],'query':''})
+            elif a['tool']=='sample_discussion' and discussion.needs_visual(store,eid) and executor.remaining:
+                pending.insert(0,{'tool':'read_comments_visual','source_ref':a['source_ref'],'query':''})
             calls+=result['calls'];actions.append({**a,'evidence_id':eid,'result':result})
         topic=read_topic(store,p['topic_id'],include_tracking=False);after=inspect(store,topic)
         status='evidence_gaps_remaining' if after['context']['status']=='missing' or after['discussion']['status']!='sampled' else 'samples_ready_for_analysis'
@@ -227,8 +217,8 @@ def run(store,*,topic_id=None,max_calls=6,model=None,run_id=None,delegations=Non
     # Spend remaining source budget fairly on real details, including feeds that
     # do not need background search. This remains independent of AI readiness.
     if calls<max_calls and not topic_id and delegations is None:
-        extra=enrichment.prepare(store,max_calls=max_calls-calls);calls+=extra['calls'];results.extend(extra['results'])
-    return {'calls':calls,'results':results,'limit':max_calls,'research_tasks':completed,'selection':'按证据缺口研究，剩余详情预算跨来源轮换'}
+        extra=executor.invoke('read_detail_batch',{},lambda units:enrichment.prepare(store,max_calls=units),maximum=max_calls-calls);calls+=extra['calls'];results.extend(extra.get('results',[]))
+    return {'calls':calls,'results':results,'limit':max_calls,'research_tasks':completed,'selection':'按证据缺口研究，剩余详情预算跨来源轮换','tool_run_id':executor.run_id}
 
 
 def overview(store):

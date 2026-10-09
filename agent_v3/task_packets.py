@@ -25,7 +25,7 @@ def topic_packet(topic,context):
     additional=[e for e in topic.get('discussion_samples',[])[:12]+topic.get('research_sources',[])[:3] if e['evidence_id'] not in direct_ids]
     for source in topic['evidence'][:6]+additional:
         text=source['body'][:6000]
-        evidence.append({k:source[k] for k in ('evidence_id','title','url','content_scope','published_at')})
+        evidence.append({k:source[k] for k in ('evidence_id','title','url','content_scope','published_at','content_hash')})
         evidence[-1].update({'body':text,'body_truncated':len(source['body'])>len(text)})
         evidence[-1]['reading_metadata']=source.get('reading_metadata')
         evidence[-1]['role']='direct' if source['evidence_id'] in direct_ids else 'discussion' if source['content_scope'] in ('comment_sample','comment_ocr_sample') else 'background_unverified'

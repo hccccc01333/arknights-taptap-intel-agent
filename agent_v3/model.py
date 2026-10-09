@@ -132,14 +132,14 @@ class GatedModel:
 
     @property
     def supports_tasks(self):
-        return bool(getattr(self.client,"supports_tasks",False))
+        return bool(getattr(self.client,"supports_tasks",False) or callable(getattr(self.client,'decide',None)))
 
     @property
     def supports_research_tasks(self):return self.supports_tasks
 
     @property
     def compact_tasks(self):
-        return bool(getattr(self.client,"compact_tasks",False))
+        return self.supports_tasks
 
     @property
     def supports_main_agent(self):return self.supports_tasks and self.compact_tasks
@@ -148,11 +148,15 @@ class GatedModel:
     def transport(self):return getattr(self.client,"transport","opencode-agent" if self.model.startswith("opencode/") else "chat-completions")
 
     def run_task(self,*args,**kwargs):
+        if self.store._run_owner:self.store.heartbeat(self.store._run_owner)
         cooldown=gate(self.store,self.model)
         if cooldown['status']=='deferred':
             from L4_intelligence.intelligence.llm import LLMUnavailable
             raise LLMUnavailable(cooldown['reason'])
-        try:return self.client.run_task(*args,**kwargs)
+        try:
+            if getattr(self.client,'supports_tasks',False):return self.client.run_task(*args,**kwargs)
+            from .contracts import chat_task
+            return chat_task(self.client,*args,**kwargs)
         except StructuredDeliveryError:raise
         except Exception as error:
             failure(self.store,self.model,error)
@@ -173,4 +177,4 @@ class GatedModel:
 def task_metadata(response):
     return {k:response[k] for k in ("model","api_model","usage","seconds","transport","session_id",
             "request_id","task_id","input_file","reported_cost","cost_status","reasoning_effort",
-            "output_limit","finish_reason","reasoning_present") if k in response}
+            "output_limit","finish_reason","reasoning_present","contract_version","stage","agent_role","input_fingerprint") if k in response}

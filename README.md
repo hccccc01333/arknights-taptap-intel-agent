@@ -2,7 +2,7 @@
 
 **持续从全网热点中，为 TapTap 找增长机会、提供情报、创意和可用素材的 AI Agent 系统。**
 
-[![版本](https://img.shields.io/badge/version-3.0.0--alpha.15-087f8c)](docs/版本记录.md)
+[![版本](https://img.shields.io/badge/version-3.0.0--alpha.16-087f8c)](docs/版本记录.md)
 [![CI](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml)
 [![网站部署](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml)
 
@@ -33,6 +33,8 @@
 系统采用一个业务主 Agent 和一个所属研究子 Agent。主 Agent 负责筛选、委派、业务判断及交付；研究子 Agent 专门补齐事件内容，按缺口使用联网搜索、爬虫、浏览器读取、评论区滚动、截图与 OCR。
 
 这里的 **Agent 是有目标、输入、工具和交付约束的 AI 执行角色**。主 Agent 与子 Agent 可以使用同一个模型，但任务和权限不同。把一次工作拆成筛选、解读、制作等多次模型调用，并不意味着每个步骤都要新建一个 Agent。
+
+后台所说的“任务”是**系统自动产生、自动领取和自动恢复的工作项**。使用者不需要创建任务或点击启动；打开五个入口，读取已经整理的成果。Alpha16 强化了这套自动执行机制，具体实现和故障验收见[自动执行可靠性与统一契约](docs/V3-自动执行可靠性与统一契约.md)。
 
 | 谁负责 | 做什么 | 对应实现 |
 | --- | --- | --- |
@@ -157,6 +159,8 @@ flowchart TD
 
 [`task_packets.py`](agent_v3/task_packets.py)把来源整理成有大小上限的任务包，并从已读内容生成 `quote_candidates`。每个候选引用有一个整数 `ref`，绑定实际来源编号与逐字文本。模型选择 `fact_refs` / `basis_refs`，程序再还原引用，减少模型自行编造来源编号或“网友原话”的空间。
 
+[`contracts.py`](agent_v3/contracts.py)是主、子 Agent 共用的交付入口：阶段对应执行角色，输入包带版本指纹，所有适配器返回相同的 `result` 和运行元数据，并接受同一套本地 Schema 与引用检查。DeepSeek、Space Bunny、OpenCode Zen 使用各自的传输接口；现有普通 Chat Completions 客户端也通过适配进入这套业务契约。换供应商不会换成另一套宽松的业务规则。
+
 以当前 DeepSeek 接入为例，响应处理顺序为：
 
 ```text
@@ -179,6 +183,10 @@ DeepSeek 请求使用 JSON 输出模式，Schema 的具体约束由本地程序�
 [`service.py`](agent_v3/service.py)的调度线程每30秒检查一次到期任务。首次初始化后，默认采集间隔60分钟、初筛间隔1分钟、深度待办检查间隔3分钟；具体设置保存在数据库，重启保留既有偏好。这些是检查／调度间隔，任务仍可能排队、退避或超过间隔才能完成。
 
 当前后台使用一个任务工作线程，配合数据库运行锁和任务租约，避免两个周期重复领取同一项工作。初筛与深度研究都到期时交替推进，防止耗时研究一直占住初筛队列。正常使用者只读五个成果入口，自动生产不依赖网页按钮或浏览请求。
+
+Alpha16 的运行租约与工作项领取凭证分别带随机 token。模型和工具请求在数据库事务外执行；交付时再检查租约、话题、来源及业务条件版本，把成果与完成回执放在同一个短事务提交。进程崩溃前没有提交的成果回滚，已经提交的成果保留；失效执行者无法重新续租或覆盖新结果。自动补查可用新的领取凭证更新情报，并保留之前的回执和分析版本。
+
+[`tool_executor.py`](agent_v3/tool_executor.py)统一执行研究与兼容路径的工具调用。它在联网前持久预留预算，完成后记录实际工具用量、来源、耗时与异常；不同执行器共用同一个运行预算，重新创建实例不能扩大上限。中断且实际用量未知时保守保留预算。工具次数、token 和金额是不同计量：当前来源工具不返回计费金额，金额字段为空并标明未报告，不把调用次数伪装成实际费用。本地运行详情可查看工具台账，公开成果只保留允许发布的业务内容。
 
 | 运行机制 | 怎样处理 | 解决什么问题 |
 | --- | --- | --- |

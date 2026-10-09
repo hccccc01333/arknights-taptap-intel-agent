@@ -1,3 +1,4 @@
+from .contracts import run_task
 from agent_v2.engine import run_agent as bounded_agent, SYSTEM as EVIDENCE_SYSTEM
 from agent_v2.store import dump
 import time
@@ -32,6 +33,30 @@ def run_agent(store,run_id,model=None,*,assigned_topic=None,**budgets):
         topic=store.conn.execute('SELECT fingerprint FROM topic WHERE topic_id=?',(assigned_topic,)).fetchone()
         if not topic:raise ValueError('创意话题不存在')
         require_growth(store,assigned_topic,topic[0])
+    from .runtime_guard import LeaseLost
+    own_lease=store.active_owner()!=run_id
+    if own_lease:
+        if not store.acquire(run_id,ttl=1200):raise LeaseLost('创意运行租约不可用')
+        store._active_job=None
+        if assigned_topic:
+            from . import work
+            work.enqueue(store,topic_ids=[assigned_topic])
+            # An explicitly assigned maintenance invocation can resume a deferred
+            # draft; the automatic scheduler continues to respect retry_at.
+            with store.conn:store.conn.execute("UPDATE work_item SET retry_at=NULL WHERE topic_id=? AND stage='creative' AND status='deferred'",(assigned_topic,))
+            store._active_job=work.claim(store,run_id,'creative',topic_id=assigned_topic)
+    try:return _run_agent(store,run_id,model,assigned_topic=assigned_topic,**budgets)
+    finally:
+        if own_lease:store.release(run_id)
+
+
+def _run_agent(store,run_id,model=None,*,assigned_topic=None,**budgets):
+    store._delivery_basis=None
+    if assigned_topic:
+        from .risk import require_growth
+        topic=store.conn.execute('SELECT fingerprint FROM topic WHERE topic_id=?',(assigned_topic,)).fetchone()
+        if not topic:raise ValueError('创意话题不存在')
+        require_growth(store,assigned_topic,topic[0])
     if getattr(model,"supports_tasks",False):
         return native_task(store,run_id,model,assigned_topic,timeout_seconds=budgets.get("timeout_seconds",360))
     def tools_factory(database,network_budget):
@@ -39,7 +64,7 @@ def run_agent(store,run_id,model=None,*,assigned_topic=None,**budgets):
         return tools
     from .risk import PROMPT
     return bounded_agent(store,run_id,model,tools_factory=tools_factory,system_prompt=SYSTEM+PROMPT,
-                         prompt_version="growth-pack-v3.2",**budgets)
+                         prompt_version="growth-pack-v3.2",manage_lease=store.active_owner()!=run_id,**budgets)
 
 
 def native_task(store,run_id,model,topic_id,*,timeout_seconds=360):
@@ -56,6 +81,8 @@ def native_task(store,run_id,model,topic_id,*,timeout_seconds=360):
     packet={"task":store.get_run(run_id)["task"],"topic":topic,"business_context":store.context(),
             "evidence":store.evidence(sorted(tools.read_ids)),"reusable_materials":materials,
             "delivery_context":tools.delivery_context()}
+    from .runtime_guard import basis
+    store._delivery_basis=basis(store,topic_id,topic['fingerprint'],packet=packet)
     schema=next(d["function"]["parameters"] for d in tools.definitions if d["function"]["name"]=="finish_research")
     grounded,packet["quote_candidates"]=native_contract(topic,topic.get("source_assets") or [])
     assessment=schema["properties"]["assessments"]
@@ -68,11 +95,12 @@ def native_task(store,run_id,model,topic_id,*,timeout_seconds=360):
     started=time.monotonic();usage={}
     try:
         for attempt in range(2):
+            store.heartbeat(run_id)
             remaining=timeout_seconds-(time.monotonic()-started)
             if remaining<5:raise TimeoutError("创意任务时间预算用完")
             delivery_error=None
             from .risk import PROMPT
-            try:response=model.run_task("creative",packet,schema,SYSTEM+PROMPT,timeout_seconds=remaining)
+            try:response=run_task(model,"creative",packet,schema,SYSTEM+PROMPT,timeout_seconds=remaining)
             except StructuredDeliveryError as error:
                 response=error.response;delivery_error=error
             store.step(run_id,"opencode_task",{k:response[k] for k in ("model","usage","seconds","transport","session_id","input_file")})

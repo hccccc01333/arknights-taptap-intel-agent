@@ -1,4 +1,5 @@
 """Plan then produce; preserve a real AI plan when production is interrupted."""
+from .contracts import run_task
 import copy
 import json
 import time
@@ -27,6 +28,9 @@ def run(store,run_id,model,topic_id,*,timeout_seconds=360):
         current=delivery_current(store,topic,(topic.get('interpretation') or {}).get('payload',{}))
         if not current['business_eligible']:raise ValueError('创意时机已过期或时间依据不足')
     packet=topic_packet(topic,context)
+    from .runtime_guard import basis
+    expected=basis(store,topic_id,topic['fingerprint'],packet=packet)
+    store._delivery_basis=expected
     packet['intelligence']=intel;packet['business_decision']=intel;packet['hotspot_interpretation']=(topic.get('interpretation') or {}).get('payload');packet['risk_assessment']=safety
     packet['optional_artifacts_note']='游戏情报和已保存素材可为空；根据热点、来源和机会判断形成创意，不依赖这些产物'
     packet['current_time']=datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(timespec='seconds')
@@ -44,10 +48,11 @@ def run(store,run_id,model,topic_id,*,timeout_seconds=360):
 
     def task(stage,input,schema,system):
         for attempt in range(2):
+            store.heartbeat(run_id)
             remaining=timeout_seconds-(time.monotonic()-started)
             if remaining<5:raise TimeoutError('创意任务时间预算用完')
             invalid=None
-            try:response=model.run_task(stage,input,schema,system,timeout_seconds=remaining)
+            try:response=run_task(model,stage,input,schema,system,timeout_seconds=remaining)
             except StructuredDeliveryError as error:response=error.response;invalid=error
             store.step(run_id,'opencode_task' if response['transport']=='opencode-agent' else 'model_task',task_metadata(response))
             if response.get('reasoning_effort'):store.step(run_id,'reasoning_setting',{'effort':response['reasoning_effort']})
@@ -70,7 +75,7 @@ def run(store,run_id,model,topic_id,*,timeout_seconds=360):
             store.step(run_id,'creative_plan_reused',{'draft_id':draft_id,'original_run_id':cached['run_id']})
         else:
             plan=task('creative_plan',packet,schema,PLAN_SYSTEM+PROMPT)
-            with store.conn:
+            with store.delivery(run_id,expected,job=store._active_job):
                 store.conn.execute('INSERT INTO creative_draft VALUES(?,?,?,?,?,?,?,?,?)',
                     (draft_id,topic_id,topic['fingerprint'],context_version,model.model,run_id,now_iso(),'planned',dump(plan)))
             store.step(run_id,'creative_plan_saved',{'draft_id':draft_id,'title':plan['title'],'status':'production_pending'})
@@ -101,8 +106,9 @@ def run(store,run_id,model,topic_id,*,timeout_seconds=360):
         if topic.get('event_id'):assessment['event_id']=topic['event_id']
         result={'summary':plan['title'],'assessments':[assessment]}
         assessments=tools.validate(result)
-        event_ids=store.save_assessments(run_id,assessments)
-        with store.conn:store.conn.execute("UPDATE creative_draft SET status='completed' WHERE draft_id=?",(draft_id,))
+        with store.delivery(run_id,expected):
+            event_ids=store.save_assessments(run_id,assessments)
+            store.conn.execute("UPDATE creative_draft SET status='completed' WHERE draft_id=?",(draft_id,))
         store.step(run_id,'creative_production_saved',{'draft_id':draft_id,'event_ids':event_ids,'review_status':'unreviewed'})
         store.finish(run_id,'completed',result={**result,'event_ids':event_ids,'prompt_version':'growth-pack-v3.13.1',
                      'review_status':'unreviewed','transport':getattr(model,'transport','opencode-agent')},model=model.model,usage=usage)

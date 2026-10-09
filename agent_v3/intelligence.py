@@ -1,5 +1,6 @@
 """Analyze a topic for the shared intelligence/material bank, without requiring a creative."""
 from __future__ import annotations
+from .contracts import run_task
 
 import json
 import time
@@ -131,6 +132,8 @@ def run(store,run_id,job,model,*,max_turns=3,max_tools=8,timeout_seconds=180):
     assets=store.source_assets(limit=60,evidence_ids=sorted(tools.read_ids))
     read_assets={a["asset_id"] for a in assets}
     packet={"topic":topic,"source_assets":assets,"business_context":store.context()}
+    from .runtime_guard import basis
+    expected=basis(store,job["topic_id"],job["fingerprint"],packet={"evidence":topic["evidence"]})
     if getattr(model,"supports_tasks",False):
         schema,packet["quote_candidates"]=native_contract(topic,assets)
         compact=bool(getattr(model,'compact_tasks',False))
@@ -143,7 +146,7 @@ def run(store,run_id,job,model,*,max_turns=3,max_tools=8,timeout_seconds=180):
             if remaining<5:raise TimeoutError("情报任务时间预算用完")
             delivery_error=None
             try:
-                response=model.run_task("intelligence",packet,schema,INTELLIGENCE_SYSTEM if compact else SYSTEM,timeout_seconds=remaining)
+                response=run_task(model,"intelligence",packet,schema,INTELLIGENCE_SYSTEM if compact else SYSTEM,timeout_seconds=remaining)
             except StructuredDeliveryError as error:
                 response=error.response;delivery_error=error
             store.step(run_id,"opencode_task" if response['transport']=='opencode-agent' else "model_task",task_metadata(response))
@@ -158,7 +161,8 @@ def run(store,run_id,job,model,*,max_turns=3,max_tools=8,timeout_seconds=180):
                 packet["validation_errors"]=[str(error)]
                 if attempt:raise
                 continue
-            with store.conn:
+            delivery={"topic_id":job["topic_id"],"decision":result["opportunity"]["decision"],"usage":usage,"model":model.model}
+            with store.delivery(run_id,expected,job=job if job.get("lease_token") else None,result=delivery):
                 store.conn.execute("INSERT OR IGNORE INTO topic_intelligence VALUES(?,?,?,?,?,?)",
                                    (job["topic_id"],job["fingerprint"],INTELLIGENCE_VERSION,run_id,now_iso(),dump(result)))
                 for pattern in result["patterns"]:store.save_material(pattern,run_id)
@@ -196,7 +200,8 @@ def run(store,run_id,job,model,*,max_turns=3,max_tools=8,timeout_seconds=180):
             try:
                 if name=="finish_intelligence":
                     result=validate(store,tools,job,args,read_assets)
-                    with store.conn:
+                    delivery={"topic_id":job["topic_id"],"decision":result["opportunity"]["decision"],"usage":usage,"model":getattr(model,"model",None)}
+                    with store.delivery(run_id,expected,job=job if job.get("lease_token") else None,result=delivery):
                         store.conn.execute("INSERT OR IGNORE INTO topic_intelligence VALUES(?,?,?,?,?,?)",
                                            (job["topic_id"],job["fingerprint"],INTELLIGENCE_VERSION,run_id,now_iso(),dump(result)))
                         for pattern in result["patterns"]:store.save_material(pattern,run_id)

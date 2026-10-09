@@ -256,6 +256,11 @@ def execute_cycle(run_id,cycle_id,research,live,topic_id=None,*,model=None,store
                          model=result.get("model") or previous.get("model") or getattr(model,"model",None),usage=usage)
         store.conn.execute("UPDATE cycle SET status=?,finished_at=?,error=? WHERE cycle_id=?",(status,now_iso(),store.get_run(run_id).get("error"),cycle_id));store.conn.commit()
     except Exception as error:
+        from .runtime_guard import LeaseLost
+        if isinstance(error,LeaseLost):
+            store.conn.rollback()
+            store.step(run_id,'stale_worker_rejected',{'reason':str(error)})
+            return
         store.conn.rollback()
         usage={}
         for step in store.get_run(run_id).get('steps',[]):

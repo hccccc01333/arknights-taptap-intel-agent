@@ -1,3 +1,4 @@
+from .contracts import run_task
 """One business agent delegates research and produces distinct business records."""
 import copy
 import json
@@ -42,13 +43,14 @@ def task(store, run_id, model, stage, packet, schema, system, timeout_seconds=18
     """Shared bounded model call; final JSON only, no private reasoning persisted."""
     started=time.monotonic();usage={}
     for attempt in range(2):
+        store.heartbeat(run_id)
         remaining=timeout_seconds-(time.monotonic()-started)
         if remaining<5:raise TimeoutError('主 Agent 任务预算用完')
         invalid=None
-        try:response=model.run_task(stage,packet,schema,system,timeout_seconds=remaining)
+        try:response=run_task(model,stage,packet,schema,system,timeout_seconds=remaining)
         except StructuredDeliveryError as error:response=error.response;invalid=error
         store.step(run_id,'model_task',{**task_metadata(response),'stage':stage,
-            'agent_role':'research_child' if stage=='interpretation' else 'business_main'})
+            'agent_role':response['agent_role']})
         for key,value in response.get('usage',{}).items():
             if type(value) in (int,float):usage[key]=usage.get(key,0)+value
         try:
@@ -111,7 +113,7 @@ def plan(store,run_id,model,topic_id=None,*,screen_limit=18,screen_only=False):
         if len(packets)>=screen_limit:continue
         packets.append({'ref':len(packets),'topic_id':tid,'fingerprint':topic['fingerprint'],'title':topic['title'],
             'signals':topic['signals'][:5],'freshness':freshness,'sources':[{'title':e['title'],'scope':e['content_scope'],'body':e['body'][:450],'published_at':e['published_at'],
-                'platform':e['platform']} for e in topic['evidence'][:2]],
+                'platform':e['platform'],'evidence_id':e['evidence_id'],'content_hash':e['content_hash'],'url':e['url']} for e in topic['evidence'][:2]],
             'has_interpretation':bool(store.interpretation(tid,topic['fingerprint']))})
     if packets:
         item=object_schema({'ref':{'type':'integer','minimum':0,'maximum':len(packets)-1},
@@ -124,7 +126,9 @@ def plan(store,run_id,model,topic_id=None,*,screen_limit=18,screen_only=False):
         for decision in value['decisions']:
             if decision['action']=='delegate_research' and not decision['questions']:raise ValueError('委派研究需要具体问题')
             if decision['route']=='unrelated' and decision['action'] not in ('archive','watch'):raise ValueError('无合理联系的候选不投入深度研究')
-        with store.conn:
+        expected={'topics':{p['topic_id']:p['fingerprint'] for p in packets},'context_version':context_version,
+            'sources':{e['evidence_id']:{k:e.get(k) for k in ('content_hash','url','published_at')} for p in packets for e in p['sources']}}
+        with store.delivery(run_id,expected):
             for decision in value['decisions']:
                 source=packets[decision.pop('ref')]
                 if decision['action']=='delegate_research' and not decision['questions']:
@@ -224,6 +228,8 @@ def analyze(store,run_id,job,model):
     tools=GrowthTools(store,0);tools.run_id=run_id
     topic=tools.call('read_topic',{'topic_id':job['topic_id']})
     packet=topic_packet(topic,store.context());packet['research_return']=interpretation['payload']
+    from .runtime_guard import basis
+    expected=basis(store,job['topic_id'],job['fingerprint'],packet=packet)
     from .risk import PROMPT,grounded,combine,save as save_risk,verdict,POLICY_VERSION,policy
     prior_safety=policy(store,job['topic_id'],job['fingerprint'])
     known=combine(interpretation['payload'].get('risk_assessment'),prior_safety if prior_safety.get('policy_version')==POLICY_VERSION else None)
@@ -271,26 +277,28 @@ game_signals尽量填写category和platform以归类。patterns每项填写deliv
     payload['next_review_at']=(datetime.now(timezone.utc)+timedelta(hours=6)).isoformat(timespec='seconds') if questions else None
     result=validate(store,tools,job,payload,tools.read_source_assets)
     # A failed delivery cannot grant permission to an older opportunity.
-    save_risk(store,job['topic_id'],job['fingerprint'],run_id,combined)
-    with store.conn:
-        store.save_intelligence(job['topic_id'],job['fingerprint'],job['prompt_version'],run_id,result)
-        for signal in signals:
-            signal['risk_assessment']=safety
-            signal['validation']=signal_validation(signal,topic)
-            signal['facts']=[{k:quotes[r][k] for k in ('evidence_id','quote')} for r in signal.pop('basis_refs')]
-            signal['source_versions']={f['evidence_id']:store.snapshot(f['evidence_id']) for f in signal['facts']}
-            signal_id=stable_id('signal_',dump([job['topic_id'],job['fingerprint'],run_id,signal]))
-            store.conn.execute('INSERT OR IGNORE INTO game_signal VALUES(?,?,?,?,?,?)',
-                (signal_id,job['topic_id'],job['fingerprint'],run_id,now_iso(),dump(signal)))
-        for pattern,application in zip(patterns,applications):
-            mid=store.save_material(pattern,run_id)
-            store.conn.execute('INSERT OR IGNORE INTO material_context VALUES(?,?,?,?,?)',
-                (mid,job['topic_id'],job['fingerprint'],run_id,dump(application)))
-            store.conn.execute('INSERT OR IGNORE INTO material_application_run VALUES(?,?,?,?,?,?)',
-                (mid,job['topic_id'],job['fingerprint'],run_id,now_iso(),dump(application)))
-    store.step(run_id,'main_agent_delivery',{'topic_id':job['topic_id'],'signals':len(signals),'materials':len(patterns),
-        'decision':result['opportunity']['decision'],'research_questions':questions,'role':'business_main'})
-    if questions:
-        from .followups import enqueue
-        enqueue(store,job['topic_id'],job['fingerprint'],run_id,[],questions)
-    return {'topic_id':job['topic_id'],'decision':result['opportunity']['decision'],'usage':usage,'model':model.model}
+    output={'topic_id':job['topic_id'],'decision':result['opportunity']['decision'],'usage':usage,'model':model.model}
+    with store.delivery(run_id,expected,job=job if job.get('lease_token') else None,result=output):
+        save_risk(store,job['topic_id'],job['fingerprint'],run_id,combined)
+        with store.conn:
+            store.save_intelligence(job['topic_id'],job['fingerprint'],job['prompt_version'],run_id,result)
+            for signal in signals:
+                signal['risk_assessment']=safety
+                signal['validation']=signal_validation(signal,topic)
+                signal['facts']=[{k:quotes[r][k] for k in ('evidence_id','quote')} for r in signal.pop('basis_refs')]
+                signal['source_versions']={f['evidence_id']:store.snapshot(f['evidence_id']) for f in signal['facts']}
+                signal_id=stable_id('signal_',dump([job['topic_id'],job['fingerprint'],run_id,signal]))
+                store.conn.execute('INSERT OR IGNORE INTO game_signal VALUES(?,?,?,?,?,?)',
+                    (signal_id,job['topic_id'],job['fingerprint'],run_id,now_iso(),dump(signal)))
+            for pattern,application in zip(patterns,applications):
+                mid=store.save_material(pattern,run_id)
+                store.conn.execute('INSERT OR IGNORE INTO material_context VALUES(?,?,?,?,?)',
+                    (mid,job['topic_id'],job['fingerprint'],run_id,dump(application)))
+                store.conn.execute('INSERT OR IGNORE INTO material_application_run VALUES(?,?,?,?,?,?)',
+                    (mid,job['topic_id'],job['fingerprint'],run_id,now_iso(),dump(application)))
+        store.step(run_id,'main_agent_delivery',{'topic_id':job['topic_id'],'signals':len(signals),'materials':len(patterns),
+            'decision':result['opportunity']['decision'],'research_questions':questions,'role':'business_main'})
+        if questions:
+            from .followups import enqueue
+            enqueue(store,job['topic_id'],job['fingerprint'],run_id,[],questions)
+        return {'topic_id':job['topic_id'],'decision':result['opportunity']['decision'],'usage':usage,'model':model.model}

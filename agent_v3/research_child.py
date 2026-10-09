@@ -67,6 +67,8 @@ def interpret(store,run_id,model,topic_id,mission=None):
         store.step(run_id,'research_child_reused',{'topic_id':topic_id,'original_run_id':cached['run_id']})
         return cached
     packet=topic_packet(topic,store.context());packet.pop('business_context',None)
+    from .runtime_guard import basis
+    expected=basis(store,topic_id,topic['fingerprint'],packet=packet,context=False)
     from .freshness import assess
     freshness=assess(store,topic);packet['freshness']=freshness
     from .risk import PROMPT,grounded,save as save_risk
@@ -147,16 +149,17 @@ unknowns不是任务终点。对可通过公开证据核查的缺口填写next_a
     else:value['freshness']='recent_or_unknown'
     value.update({'interpretation_version':INTERPRETATION_VERSION,'heat_evidence':heat,'freshness_assessment':freshness,'source_versions':{e['evidence_id']:store.snapshot(e['evidence_id']) for e in packet['evidence']},
         'agent_role':'research_child','mission':mission or {},'reading_gaps':topic['research_gaps']})
-    with store.conn:
-        if cached:
-            store.conn.execute('INSERT OR IGNORE INTO interpretation_revision VALUES(?,?,?,?,?,?)',
-                (stable_id('interpretation_',dump(cached)),topic_id,topic['fingerprint'],cached['run_id'],cached['created_at'],dump(cached['payload'])))
-        store.conn.execute('INSERT INTO topic_interpretation VALUES(?,?,?,?,?) ON CONFLICT(topic_id,fingerprint) DO UPDATE SET run_id=excluded.run_id,created_at=excluded.created_at,payload=excluded.payload',
-            (topic_id,topic['fingerprint'],run_id,now_iso(),dump(value)))
-    save_risk(store,topic_id,topic['fingerprint'],run_id,value['risk_assessment'],stage='research_child')
-    from . import followups
-    followups.settle(store,mission or {},run_id,value.get('followup_answers',[]))
-    queued=followups.enqueue(store,topic_id,topic['fingerprint'],run_id,value.get('next_actions',[]),value['unknowns'])
-    store.step(run_id,'research_child_return',{'topic_id':topic_id,'status':value['status'],'headline':value['headline'],
-        'source_count':len(sources),'unknowns':value['unknowns'],'followup_ids':queued,'role':'research_child'})
-    return store.interpretation(topic_id,topic['fingerprint'])
+    with store.delivery(run_id,expected):
+        with store.conn:
+            if cached:
+                store.conn.execute('INSERT OR IGNORE INTO interpretation_revision VALUES(?,?,?,?,?,?)',
+                    (stable_id('interpretation_',dump(cached)),topic_id,topic['fingerprint'],cached['run_id'],cached['created_at'],dump(cached['payload'])))
+            store.conn.execute('INSERT INTO topic_interpretation VALUES(?,?,?,?,?) ON CONFLICT(topic_id,fingerprint) DO UPDATE SET run_id=excluded.run_id,created_at=excluded.created_at,payload=excluded.payload',
+                (topic_id,topic['fingerprint'],run_id,now_iso(),dump(value)))
+        save_risk(store,topic_id,topic['fingerprint'],run_id,value['risk_assessment'],stage='research_child')
+        from . import followups
+        followups.settle(store,mission or {},run_id,value.get('followup_answers',[]))
+        queued=followups.enqueue(store,topic_id,topic['fingerprint'],run_id,value.get('next_actions',[]),value['unknowns'])
+        store.step(run_id,'research_child_return',{'topic_id':topic_id,'status':value['status'],'headline':value['headline'],
+            'source_count':len(sources),'unknowns':value['unknowns'],'followup_ids':queued,'role':'research_child'})
+        return store.interpretation(topic_id,topic['fingerprint'])

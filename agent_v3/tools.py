@@ -55,6 +55,17 @@ class GrowthTools(ResearchTools):
         self.topics={};self.read_materials=set();self.read_source_assets=set();self.run_id=None
 
     def call(self,name,args):
+        if name not in {d['function']['name'] for d in self.definitions}:raise ValueError('工具未注册')
+        from .tool_executor import ToolExecutor
+        if not getattr(self,'_executor',None):
+            self._executor=ToolExecutor(self.store,self.run_id,limit=self.network_budget)
+        network=name in ('read_source','search_sources')
+        def execute(units):
+            if network:self.network_budget=min(self.network_budget,units)
+            return self._call_impl(name,args)
+        return self._executor.invoke(name,args,execute,maximum=min(1,self.network_budget) if network else 0)
+
+    def _call_impl(self,name,args):
         if not isinstance(args,dict):raise ValueError("工具参数必须是对象")
         if name=='read_source':
             if self.network_budget<=0:return {'status':'budget_exhausted','note':'本轮来源读取预算用完'}
@@ -81,6 +92,14 @@ class GrowthTools(ResearchTools):
             return {"topics":queue(self.store,args.get("limit",24)),"coverage_note":"已接入的渠道覆盖；候选优先级只是观察信号，不是增长价值评分。"}
         if name=="read_topic":
             result=read_topic(self.store,str(args.get("topic_id") or ""))
+            from .runtime_guard import basis
+            snapshot=basis(self.store,result['topic_id'],result['fingerprint'],packet={
+                'evidence':result['evidence']+result.get('discussion_samples',[])+result.get('research_sources',[])})
+            previous=getattr(self.store,'_delivery_basis',None)
+            if previous:
+                snapshot['topics']={**previous['topics'],**snapshot['topics']}
+                snapshot['sources']={**previous['sources'],**snapshot['sources']}
+            self.store._delivery_basis=snapshot
             self.topics[result["topic_id"]]=result
             self.read_ids.update(e["evidence_id"] for e in result["evidence"])
             self.read_ids.update(e['evidence_id'] for e in result.get('discussion_samples',[])+result.get('research_sources',[]))

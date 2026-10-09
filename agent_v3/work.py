@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from agent_v2.store import dump, now_iso, stable_id
 
-INTELLIGENCE_VERSION = "intelligence-v3.13.1"
+INTELLIGENCE_VERSION = "intelligence-v3.16"
 
 
 def enqueue(store, *, topic_id=None,topic_ids=None):
@@ -40,11 +41,11 @@ def enqueue(store, *, topic_id=None,topic_ids=None):
             if not analysis:
                 stages.append("intelligence")
             for stage in stages:
-                version = (INTELLIGENCE_VERSION+(':'+context_version if topic_ids is not None else '')) if stage=="intelligence" else "creative-v3.2:"+context_version
+                version = INTELLIGENCE_VERSION+':'+context_version if stage=="intelligence" else "creative-v3.2:"+context_version
                 key = stable_id("job_",dump([stage,tid,fingerprint,version]))
                 cursor = store.conn.execute("""INSERT OR IGNORE INTO work_item
-                  (job_id,stage,topic_id,fingerprint,prompt_version,bucket,priority,status,attempts,created_at,updated_at)
-                  VALUES(?,?,?,?,?,?,?,'pending',0,?,?)""",(key,stage,tid,fingerprint,version,bucket,topic["priority"],now_iso(),now_iso()))
+                  (job_id,stage,topic_id,fingerprint,prompt_version,bucket,priority,status,attempts,created_at,updated_at,context_version)
+                  VALUES(?,?,?,?,?,?,?,'pending',0,?,?,?)""",(key,stage,tid,fingerprint,version,bucket,topic["priority"],now_iso(),now_iso(),context_version))
                 counts[stage] += cursor.rowcount
                 if not cursor.rowcount:
                     # A reversible event split may restore an earlier content
@@ -71,9 +72,10 @@ def claim(store,run_id,stage,*,topic_id=None,topic_ids=None):
     stamp=now_iso()
     store.conn.execute("BEGIN IMMEDIATE")
     try:
-        store.conn.execute("""UPDATE work_item SET status='pending',run_id=NULL,lease_until=NULL,
+        store.conn.execute("""UPDATE work_item SET status='pending',run_id=NULL,lease_until=NULL,lease_token=NULL,
           updated_at=?,error='处理租约到期，等待恢复' WHERE status='running' AND lease_until<=?""",(stamp,stamp))
-        params=[stage,stamp]
+        cutoff=(datetime.now(timezone.utc)-timedelta(hours=168)).isoformat(timespec='seconds')
+        params=[stage,stamp,cutoff,stable_id('context_',dump(store.context()))]
         risk_clause=''
         if stage=='creative':
             from .risk import POLICY_VERSION
@@ -90,26 +92,90 @@ def claim(store,run_id,stage,*,topic_id=None,topic_ids=None):
         if risk_clause:params.append(POLICY_VERSION)
         row=store.conn.execute("""SELECT w.* FROM work_item w JOIN topic t ON t.topic_id=w.topic_id
           WHERE w.stage=? AND w.status IN ('pending','deferred') AND (w.retry_at IS NULL OR w.retry_at<=?)
-          AND w.fingerprint=t.fingerprint"""+clause+risk_clause+"""
+          AND w.fingerprint=t.fingerprint AND t.eligible=1 AND t.last_seen_at>=?
+          AND (w.context_version IS NULL OR w.context_version=?)"""+clause+risk_clause+"""
           ORDER BY (SELECT MAX(done.updated_at) FROM work_item done WHERE done.stage=w.stage
                     AND done.bucket=w.bucket AND done.attempts>0) ASC,
                    w.attempts ASC,w.priority DESC,w.created_at,w.job_id LIMIT 1""",params).fetchone()
         if row:
             lease=(datetime.now(timezone.utc)+timedelta(minutes=8)).isoformat(timespec="seconds")
-            store.conn.execute("UPDATE work_item SET status='running',attempts=attempts+1,run_id=?,lease_until=?,updated_at=? WHERE job_id=?",
-                               (run_id,lease,stamp,row["job_id"]))
+            token=uuid.uuid4().hex
+            store.conn.execute("UPDATE work_item SET status='running',attempts=attempts+1,run_id=?,lease_until=?,lease_token=?,updated_at=?,context_version=COALESCE(context_version,?) WHERE job_id=?",
+                               (run_id,lease,token,stamp,stable_id('context_',dump(store.context())),row["job_id"]))
+            row=store.conn.execute('SELECT * FROM work_item WHERE job_id=?',(row['job_id'],)).fetchone()
         store.conn.commit()
-        return dict(row) if row else None
+        job=dict(row) if row else None
+        store._active_job=job
+        return job
     except Exception:
         store.conn.rollback();raise
 
 
-def finish(store,job_id,status,*,result=None,error=None,retry_at=None):
+def assert_claim(store,job):
+    from .runtime_guard import LeaseLost, StaleBasis
+    row=store.conn.execute('SELECT * FROM work_item WHERE job_id=?',(job['job_id'],)).fetchone()
+    if not row or row['status']!='running' or not job.get('lease_token') or row['lease_token']!=job['lease_token'] or row['run_id']!=job['run_id'] or row['lease_until']<=now_iso() or any(row[key]!=job[key] for key in ('stage','fingerprint','prompt_version','context_version')):
+        raise LeaseLost('工作项领取凭证过期或已被替换')
+    topic=store.conn.execute('SELECT fingerprint,eligible,last_seen_at FROM topic WHERE topic_id=?',(job['topic_id'],)).fetchone()
+    cutoff=(datetime.now(timezone.utc)-timedelta(hours=168)).isoformat(timespec='seconds')
+    if not topic or not topic['eligible'] or topic['last_seen_at']<cutoff or topic['fingerprint']!=job['fingerprint'] or job.get('context_version')!=stable_id('context_',dump(store.context())):
+        raise StaleBasis('工作项的内容或业务条件已变化')
+    if job['stage']=='creative':
+        from .risk import require_growth
+        require_growth(store,job['topic_id'],job['fingerprint'])
+    return dict(row)
+
+
+def renew(store,job,*,seconds=480):
+    """Only the current, still-live claimant may extend its lease."""
+    outer=not store.conn.in_transaction
+    if outer:store.conn.execute('BEGIN IMMEDIATE')
+    try:
+        assert_claim(store,job);store.assert_owner(job['run_id'])
+        expiry=(datetime.now(timezone.utc)+timedelta(seconds=seconds)).isoformat(timespec='seconds')
+        store.conn.execute("UPDATE work_item SET lease_until=? WHERE job_id=? AND lease_token=? AND status='running'",
+                           (expiry,job['job_id'],job['lease_token']))
+        if outer:store.conn.commit()
+        return expiry
+    except BaseException:
+        if outer:store.conn.rollback()
+        raise
+
+
+def finish(store,job,status,*,result=None,error=None,retry_at=None):
     if status not in ("succeeded","deferred","failed","superseded"):
         raise ValueError("无效任务状态")
-    store.conn.execute("""UPDATE work_item SET status=?,result=?,error=?,retry_at=?,lease_until=NULL,
-      updated_at=? WHERE job_id=?""",(status,dump(result) if result is not None else None,error,retry_at,now_iso(),job_id))
-    store.conn.commit()
+    # Compatibility for a caller on the same connection; another connection
+    # cannot complete a job merely by knowing its public job_id.
+    if isinstance(job,str):
+        if not store._active_job or store._active_job['job_id']!=job:
+            from .runtime_guard import LeaseLost
+            raise LeaseLost('完成工作项需要本次领取凭证')
+        job=store._active_job
+    receipt=store.conn.execute('SELECT * FROM delivery_receipt WHERE job_id=? AND lease_token=?',
+                               (job['job_id'],job.get('lease_token'))).fetchone()
+    if receipt and status=='succeeded':
+        return False
+    outer=not store.conn.in_transaction
+    if outer:store.conn.execute('BEGIN IMMEDIATE')
+    try:
+        if status=='succeeded':assert_claim(store,job)
+        else:
+            from .runtime_guard import LeaseLost
+            row=store.conn.execute('SELECT * FROM work_item WHERE job_id=?',(job['job_id'],)).fetchone()
+            if not row or row['status']!='running' or row['lease_token']!=job.get('lease_token') or row['run_id']!=job['run_id'] or row['lease_until']<=now_iso():
+                raise LeaseLost('不能修改已过期或被其他执行者领取的工作项')
+        store.assert_owner(job['run_id'])
+        stamp=now_iso()
+        store.conn.execute("""UPDATE work_item SET status=?,result=?,error=?,retry_at=?,lease_until=NULL,
+          updated_at=? WHERE job_id=? AND lease_token=? AND status='running'""",(status,dump(result) if result is not None else None,error,retry_at,stamp,job['job_id'],job['lease_token']))
+        if status=='succeeded':store.conn.execute('INSERT INTO delivery_receipt VALUES(?,?,?,?,?)',
+            (job['job_id'],job['lease_token'],job['run_id'],stamp,dump(result)))
+        if outer:store.conn.commit()
+        return True
+    except BaseException:
+        if outer:store.conn.rollback()
+        raise
 
 
 def defer_due(store,gate):
