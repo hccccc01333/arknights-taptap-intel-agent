@@ -60,6 +60,8 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(graph_entities.resolve(self.s,'崩铁')['status'],'unresolved')
 
     def test_long_names_win_and_ascii_boundaries_apply(self):
+        for name in ('黑神话：悟空','崩坏：星穹铁道','明日方舟：终末地','Android','库洛游戏'):
+            self.assertEqual(graph_entities.resolve(self.s,name)['status'],'linked')
         mentions=graph_entities.mentions(self.s,'明日方舟游戏中提到方舟。lolcat只是名字，LOL 英雄联盟赛事。')
         self.assertEqual(sum(m['surface']=='明日方舟' for m in mentions),1)
         self.assertFalse(any(m['surface']=='lol' for m in mentions))

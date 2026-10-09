@@ -29,6 +29,8 @@ def registry():
             eid=stable_id('entity_',dump([canonical_kind,name]))
             if eid not in result:result[eid]={'entity_id':eid,'kind':canonical_kind,'name':name,'aliases':[],'origin':'L2_registry'}
             if alias not in result[eid]['aliases']:result[eid]['aliases'].append(alias)
+    for item in result.values():
+        item['aliases']=list(dict.fromkeys([item['name'],*item['aliases']]))
     return result
 
 
