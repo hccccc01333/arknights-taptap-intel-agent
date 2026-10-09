@@ -14,10 +14,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install API and contract test dependencies
-        run: python -m pip install requests beautifulsoup4 jsonschema fastapi httpx
+        run: python -m pip install requests beautifulsoup4 jsonschema fastapi httpx 'networkx>=3.4,<4'
       - name: Validate automatic Agent and public publication contracts
         run: >-
           python -m unittest
+          agent_v3.tests.test_graph17
           agent_v3.tests.test_runtime16
           agent_v3.tests.test_library15 agent_v3.tests.test_public_site agent_v3.tests.test_automation13
           agent_v3.tests.test_risk_and_comments agent_v3.tests.test_quality
@@ -40,7 +41,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies for API regression checks
-        run: python -m pip install requests beautifulsoup4 jsonschema fastapi httpx
+        run: python -m pip install requests beautifulsoup4 jsonschema fastapi httpx 'networkx>=3.4,<4'
 
       # Optional LangGraph integration is skipped when its runtime is absent.
       - name: Run unit tests per layer

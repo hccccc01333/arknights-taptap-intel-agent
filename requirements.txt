@@ -3,6 +3,7 @@ openpyxl>=3.1
 requests>=2.31
 beautifulsoup4>=4.12,<5  # 公开新闻正文解析
 jsonschema>=4.23       # V3 OpenCode 原生任务交付契约校验
+networkx>=3.4,<4       # V3 有依据事件/需求图的社区发现，不用共现冒充热点
 openai>=1.40
 matplotlib>=3.8
 

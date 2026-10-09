@@ -16,7 +16,7 @@ ALIASES = (MODEL, 'deepseek-v4-flash')
 ENDPOINT = 'https://api.deepseek.com/chat/completions'
 EFFORTS = ('none', 'low', 'high', 'max', 'default')
 DEFAULT_OUTPUT_LIMIT = 16384
-STAGE_TOKENS = {'readiness': 512, 'research_plan': 4096, 'main_plan': 8192, 'interpretation': 8192, 'event_relation': 4096,
+STAGE_TOKENS = {'readiness': 512, 'research_plan': 4096, 'main_plan': 8192, 'interpretation': 10240, 'event_relation': 4096, 'community_summary':4096,
                 'intelligence': 8192, 'creative_plan': 8192, 'creative_production': 12288,
                 'creative': 12288}
 

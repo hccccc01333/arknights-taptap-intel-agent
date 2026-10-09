@@ -118,7 +118,10 @@ class ToolExecutor:
 
     def execute(self,name,args):
         store=self.store;tid=args['topic_id'];eid=args.get('evidence_id');query=args.get('query','')
-        if name=='read_detail':
+        from .graph_retrieval import TOOLS,tool
+        if name in TOOLS:
+            handler=lambda units:tool(store,name,args);maximum=0
+        elif name=='read_detail':
             from .enrichment import prepare
             handler=lambda units:prepare(store,topic_id=tid,evidence_id=eid,max_calls=units)
             maximum=1

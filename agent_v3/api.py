@@ -44,6 +44,12 @@ def router(current_user):
             raise HTTPException(400,'未知发现领域')
         return service.read('topics',domain=domain)
 
+    @result.get('/graph/context')
+    def graph_context(topic_id:str='',query:str='',mode:str='local',user=Depends(current_user)):
+        if mode not in ('local','global') or len(query)>100 or len(topic_id)>100:raise HTTPException(400,'图检索参数无效')
+        try:return service.read('graph_'+mode,topic_id or None,query=query)
+        except ValueError as error:raise HTTPException(400,str(error)) from error
+
     @result.get('/research-captures/{capture_id}/{frame}')
     def research_image(capture_id:str,frame:int,user=Depends(current_user)):
         from .browser_tools import ARTIFACT_ROOT

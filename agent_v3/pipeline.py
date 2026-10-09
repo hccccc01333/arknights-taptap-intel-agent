@@ -20,6 +20,10 @@ def process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
 
 
 def _process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
+    from . import tracking,knowledge_graph
+    tracking.migrate_development(store,run_id)
+    tracking.observe(store)
+    knowledge_graph.refresh(store)
     enqueued=work.enqueue(store,topic_id=topic_id,topic_ids=selected_topics)
     result={"enqueued":enqueued,"intelligence":[],"creative":[],"usage":{},"status":"intelligence_ready"}
     clause=" AND topic_id=?" if topic_id else ""
@@ -55,6 +59,7 @@ def _process(store,run_id,*,topic_id=None,model=None,selected_topics=None):
         for decision in decisions:
             research_child.interpret(store,run_id,model,decision['topic_id'],decision)
             selected_topics.append(decision['topic_id'])
+        knowledge_graph.refresh(store)
         work.enqueue(store,topic_id=topic_id)
         for row in store.conn.execute("SELECT payload FROM step WHERE run_id=? AND sequence>? AND kind IN ('model_task','research_plan_model')",(run_id,preparation_start)):
             for key,value in (json.loads(row[0]).get('usage') or {}).items():

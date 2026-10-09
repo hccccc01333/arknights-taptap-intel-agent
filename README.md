@@ -2,7 +2,7 @@
 
 **持续从全网热点中，为 TapTap 找增长机会、提供情报、创意和可用素材的 AI Agent 系统。**
 
-[![版本](https://img.shields.io/badge/version-3.0.0--alpha.16-087f8c)](docs/版本记录.md)
+[![版本](https://img.shields.io/badge/version-3.0.0--alpha.17-087f8c)](docs/版本记录.md)
 [![CI](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml)
 [![网站部署](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml)
 
@@ -36,6 +36,8 @@
 
 后台所说的“任务”是**系统自动产生、自动领取和自动恢复的工作项**。使用者不需要创建任务或点击启动；打开五个入口，读取已经整理的成果。Alpha16 强化了这套自动执行机制，具体实现和故障验收见[自动执行可靠性与统一契约](docs/V3-自动执行可靠性与统一契约.md)。
 
+Alpha17 将实体、事件、来源主张及玩家需求整理成两个 Agent 共用的图谱索引。研究子 Agent 可定位关联与缺口，主 Agent 结合局部事件证据和跨事件主题判断三个独立成果。它借用 GraphRAG 思想，保留现有运行架构；详细数据结构、检索、社区摘要及验收边界见[实体事件图谱与 GraphRAG 检索](docs/V3-实体事件图谱与GraphRAG检索.md)。
+
 | 谁负责 | 做什么 | 对应实现 |
 | --- | --- | --- |
 | 业务主 Agent | 筛选候选、提出研究问题；结合证据判断游戏情报、素材和增长机会；有机会时规划方案并制作文案、脚本 | [`main_agent.py`](agent_v3/main_agent.py)、[`native_growth.py`](agent_v3/native_growth.py) |
@@ -48,6 +50,9 @@ AI 决定“值得关注什么、还缺什么、能做什么”；程序负责�
 flowchart TD
     Sources[跨领域热榜 / 新闻 / 游戏与社区来源] --> Discovery[自动采集 / 时效检查 / 候选聚类]
     Discovery --> Main[业务主 Agent：筛选与机会判断]
+    Discovery --> Graph[实体—事件—来源图谱 / Local 与 Global 主题上下文]
+    Graph --> Main
+    Graph --> Research
     Main -->|委派证据缺口| Research[研究子 Agent：搜索 / 爬取 / 浏览器 / 截图 OCR]
     Research -->|事件解读与来源依据| Main
     Main --> Intelligence[游戏情报]
@@ -80,6 +85,7 @@ flowchart TD
 | Playwright + Node.js | 用真实浏览器打开动态网页，并读取可见内容 | 研究工具调用隔离浏览器，读取正文、定位评论区、滚动和截图；不使用使用者的浏览器登录资料 |
 | Windows OCR | 从截图中的文字区域识别文字 | 补充可见正文和已定位的评论卡片，保存截图、坐标与识别方式；识别结果需要核查 |
 | Transformers + PyTorch + BGE 中文模型（可选） | 把文字转成数字向量，用相似度召回可能相关的事件 | [`semantic.py`](agent_v3/semantic.py)离线加载本地 `BAAI/bge-small-zh-v1.5` 权重，向量缓存到 SQLite；缺依赖或权重时退回字符重合召回 |
+| NetworkX + SQLite 图索引 | 把有依据的关联组成关系网，找共同研究主题 | Alpha17 的 [`knowledge_graph.py`](agent_v3/knowledge_graph.py)保存实体、事件、主张和需求；[`graph_retrieval.py`](agent_v3/graph_retrieval.py)用 greedy modularity 找社区，提供有来源的局部／主题检索；社区大小不代表热度 |
 | LangGraph（历史分析／巡检） | 把执行流程写成“节点、分支和循环”的图 | `L4_intelligence/`的旧版分析图与`runtime/`的巡检任务图，具体用法见下文；V3 业务编排使用自己的持久队列 |
 | GitHub Actions + GitHub Pages | 前者自动检查和部署，后者托管静态网站 | 发布前端构建；独立数据分支提供整理后的公开成果，本地后台持续同步 |
 
@@ -112,7 +118,9 @@ flowchart TD
 
 例如，“某游戏公布新版本”和“该版本上线后的玩家反馈”可能属于同一个事件的发展，但不能因为都出现游戏名，就把它们当成同一条消息覆盖。来源发生变化时，旧版本的待判断关系会失效，后续读取需重新核对。
 
-这里借用了图式关联与可追溯摘要的思路，**当前没有接入完整 GraphRAG 框架，也没有完成实体知识图谱与社群报告体系**。已实现的是 SQLite 中的事件、来源和关系记录；向量用于召回，引用用于约束判断，二者都不能保证聚类语义一定正确。
+Alpha17 进一步建立增量实体—事件—主张—需求图谱。游戏别名使用共享注册表，歧义时不强连；未注册人物／活动按来源保留 proposed 身份。研究解读可同次返回有引用的实体和关系抽取，模型建议再由研究核查。Local 检索对象及事件邻域，Global 返回有依据的主题与缓存摘要；后续进展保存关联边，**只有同一次发生才合并事件**。
+
+这是 GraphRAG 思想的定制落地，**没有安装完整 Microsoft GraphRAG，也没有完整层级报告和 Global map-reduce 问答**。NetworkX 社区依据有效事件关联和有限样本需求，不能仅凭共享游戏／平台连接全部内容，更不能把事件数量当热点。源码、表结构、五个只读工具与离线评估见[详细说明](docs/V3-实体事件图谱与GraphRAG检索.md)。真实模型抽取准确率仍需额度恢复后验收。
 
 时间也分开处理：`published_at` 是来源发布日期，观察时间是系统何时看到它，事件日期需从来源核对。当前关注窗口通常为过去168小时；旧内容若没有近期重新传播的证据，不会因今天再次采集就变成今天的热点。榜单位置变化与正文变化分别记录，普通排名波动不会反复触发整套内容分析。
 

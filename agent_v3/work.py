@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from agent_v2.store import dump, now_iso, stable_id
 
-INTELLIGENCE_VERSION = "intelligence-v3.16"
+INTELLIGENCE_VERSION = "intelligence-v3.17"
 
 
 def enqueue(store, *, topic_id=None,topic_ids=None):

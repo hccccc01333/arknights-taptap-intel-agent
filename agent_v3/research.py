@@ -11,9 +11,10 @@ from .public_sources import search_news
 from .materials import capture
 
 READABLE=('chinanews','tieba','bilibili','gamemedia')
+from .graph_retrieval import TOOLS as GRAPH_TOOLS
 PLAN_SCHEMA={'type':'object','properties':{'reason':{'type':'string','minLength':4,'maxLength':800},
   'actions':{'type':'array','maxItems':4,'items':{'type':'object','properties':{
-    'tool':{'type':'string','enum':['read_detail','search_news','search_web','sample_discussion','browse_page','screenshot_ocr','read_comments_visual']},
+    'tool':{'type':'string','enum':['read_detail','search_news','search_web','sample_discussion','browse_page','screenshot_ocr','read_comments_visual',*GRAPH_TOOLS]},
     'source_ref':{'type':'integer','minimum':0,'maximum':11},'query':{'type':'string','maxLength':80}},
     'required':['tool','source_ref','query'],'additionalProperties':False}}},'required':['reason','actions'],'additionalProperties':False}
 
@@ -68,8 +69,11 @@ def plan(store,topic,model=None,mission=None,feedback=None):
                          'browse_page':'用隔离浏览器加载输入来源，读取动态可见文字并留截图，不登录',
                          'read_comments_visual':'评论接口失败时先定位、滑动到公开评论区，最多三屏截图识别；没有评论边界或要求登录则记录缺口。OCR日期/作者未知，不能证明翻红',
                          'screenshot_ocr':'浏览器有限滚动截图，本地中文 OCR 识别图片/画面文字，保留原图和位置；不能穿透验证码或代表完整评论'}}
+        from .graph_retrieval import local_context,PROMPT
+        packet['graph_context']=local_context(store,topic_id=topic['topic_id'],limit=4)
+        packet['tools'].update({name:'本地只读图查询，不消耗联网预算；query 为实体原名或主题关键词。返回状态与引文，不是事实认证。' for name in GRAPH_TOOLS})
         response=run_task(model,'research_plan',packet,PLAN_SCHEMA,
-           '你是研究子 Agent，根据主 Agent 问题、缺口与上轮工具结果选择最多四个有必要的动作，使用当前sources数组的source_ref。优先用爬虫read_detail获取正文与sample_discussion真实讨论；静态正文不足时browse_page，动态图片文字用screenshot_ocr。评论接口失败或没有样本时可read_comments_visual，先滑动定位评论区再截图识别。搜索命中可在下一轮读取；失败不要反复重试相同动作，改查询或来源。查询只写主题词。不需要则空列表。不要预设热点必须与游戏相关，不把平台简介或 OCR 广告当评论。',timeout_seconds=60)
+           '你是研究子 Agent，根据主 Agent 问题、缺口与上轮工具结果选择最多四个有必要的动作，使用当前sources数组的source_ref。先借图谱定位实体、相关事件和待查关系，再补读实际来源。优先用爬虫read_detail获取正文与sample_discussion真实讨论；静态正文不足时browse_page，动态图片文字用screenshot_ocr。评论接口失败或没有样本时可read_comments_visual，先滑动定位评论区再截图识别。搜索命中可在下一轮读取；失败不要反复重试相同动作，改查询或来源。查询只写主题词。不需要则空列表。不要预设热点必须与游戏相关，不把平台简介或 OCR 广告当评论。'+PROMPT,timeout_seconds=60)
         Draft202012Validator(PLAN_SCHEMA).validate(response['result']);value=response['result'];planner='model'
     for a in value['actions']:
         if a['source_ref']>=len(sources):raise ValueError('研究计划引用未知来源')
@@ -187,7 +191,7 @@ def run(store,*,topic_id=None,max_calls=6,model=None,run_id=None,delegations=Non
                     if run_id:store.step(run_id,'research_replan_deferred',{'error':type(error).__name__})
                     break
             a=pending.pop(0)
-            if calls>=max_calls:break
+            if calls>=max_calls and a['tool'] not in GRAPH_TOOLS:continue
             eid=p['source_ids'][a['source_ref']]
             identity=(a['tool'],eid,a['query'])
             if identity in attempted:continue

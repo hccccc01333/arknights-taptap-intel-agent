@@ -167,6 +167,10 @@ def execute_cycle(run_id,cycle_id,research,live,topic_id=None,*,model=None,store
         from . import followups
         followups.wake_changed(store)
         from . import tracking,research as research_tools
+        from . import knowledge_graph
+        tracking.migrate_development(store,run_id)
+        tracking.observe(store)
+        store.step(run_id,'knowledge_graph_index',knowledge_graph.refresh(store))
         import_failure_history(store)
         auxiliary=model if getattr(model,'supports_research_tasks',False) or getattr(model,'supports_main_agent',False) else None
         if research and model is None and gate(store)['status']=='ready':
@@ -197,6 +201,7 @@ def execute_cycle(run_id,cycle_id,research,live,topic_id=None,*,model=None,store
                     store.step(run_id,'event_relation_model',{**task_metadata(error.response),'delivery_status':'invalid'})
                 store.step(run_id,'event_relation_deferred',{'error':type(error).__name__,'note':'待判关系保留，未通过来源校验的不合并'})
         discovered=scan(store)
+        store.step(run_id,'knowledge_graph_index',knowledge_graph.refresh(store))
         if topic_id:topic_id=read_topic(store,topic_id,include_tracking=False)['canonical_topic_id']
         if main_decisions is not None:
             from .research_child import interpret
@@ -223,6 +228,14 @@ def execute_cycle(run_id,cycle_id,research,live,topic_id=None,*,model=None,store
                     if d.get('followup_ids') and d['topic_id'] in (selected_topics or []):
                         store.conn.execute("UPDATE work_item SET status='pending',retry_at=NULL WHERE topic_id=? AND stage='intelligence' AND status='succeeded'",
                             (d['topic_id'],))
+        if main_decisions is not None:
+            store.step(run_id,'knowledge_graph_index',knowledge_graph.refresh(store))
+            if gate(store)['status']=='ready' and getattr(auxiliary,'supports_main_agent',False):
+                try:
+                    from .graph_ai import summarize
+                    summarize(store,run_id,auxiliary,limit=1)
+                except Exception as error:
+                    store.step(run_id,'community_summary_deferred',{'error':type(error).__name__,'note':'有来源的主题索引保留，摘要未通过不覆盖旧版本'})
         pending=work.enqueue(store,topic_id=topic_id,topic_ids=selected_topics);store.step(run_id,"work_enqueued",pending)
         import_failure_history(store)
         store.conn.execute("UPDATE cycle SET collection=?,discovery=?,status='discovered' WHERE cycle_id=?",(dump(collected),dump(discovered),cycle_id));store.conn.commit()
@@ -278,6 +291,12 @@ def read(kind,identifier=None,query="",days=7,domain=''):
     try:
         if kind=="run":return store.get_run(identifier)
         if kind=="topic":return read_topic(store,identifier)
+        if kind=='graph_local':
+            from .graph_retrieval import local_context
+            return local_context(store,topic_id=identifier,query=query)
+        if kind=='graph_global':
+            from .graph_retrieval import global_context
+            return global_context(store,query=query)
         if kind=='tracked_event':
             from .tracking import read_event
             return read_event(store,identifier)
@@ -372,16 +391,32 @@ def start_scheduler():
     _stop.clear()
     def loop():
         while not _stop.wait(30):
-            store=Store()
-            try:
-                from .public_site import tick as publish_tick
-                publish_tick(store)
-                scheduler_tick(store)
-            except Exception as error:
-                # Preserve scheduler failures rather than silently swallowing them.
-                store.conn.execute("INSERT INTO settings VALUES('scheduler_error',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(dump({"at":now_iso(),"type":type(error).__name__}),));store.conn.commit()
-            finally:store.close()
+            scheduler_iteration()
     _thread=threading.Thread(target=loop,name="v3-scheduler",daemon=True);_thread.start()
+
+
+def scheduler_iteration():
+    """Transient DB-open/audit failures must not kill automatic scheduling."""
+    import logging
+    store=None
+    try:
+        store=Store()
+        from .public_site import tick as publish_tick
+        publish_tick(store)
+        return scheduler_tick(store)
+    except Exception as error:
+        logging.getLogger(__name__).warning('Automatic scheduler will retry: %s',type(error).__name__)
+        if store:
+            try:
+                store.conn.rollback()
+                with store.conn:store.conn.execute("INSERT OR REPLACE INTO settings VALUES('scheduler_error',?)",(dump({'at':now_iso(),'type':type(error).__name__}),))
+            except Exception as audit_error:
+                logging.getLogger(__name__).warning('Scheduler audit deferred: %s',type(audit_error).__name__)
+        return 'retry'
+    finally:
+        if store:
+            try:store.close()
+            except Exception as close_error:logging.getLogger(__name__).warning('Scheduler close deferred: %s',type(close_error).__name__)
 
 
 def scheduler_tick(store,*,cycle_dispatch=None,screen_dispatch=None):

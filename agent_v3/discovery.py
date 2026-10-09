@@ -135,7 +135,10 @@ def read_topic(store, topic_id, *, include_tracking=True):
         for e in store.evidence([r['evidence_id']])]
     latest=store.conn.execute('SELECT * FROM research_task WHERE topic_id=? ORDER BY updated_at DESC LIMIT 1',(topic_id,)).fetchone()
     result['research']={**dict(latest),'payload':json.loads(latest['payload'])} if latest else None
-    if include_tracking:result['tracked_events']=topic_events(store,topic_id)
+    if include_tracking:
+        result['tracked_events']=topic_events(store,topic_id)
+        from .graph_retrieval import local_context
+        result['graph_context']=local_context(store,topic_id=topic_id,limit=6)
     all_ids=ids+[e['evidence_id'] for e in result['discussion_samples']]+[e['evidence_id'] for e in result['research_sources']]
     result["source_assets"]=store.source_assets(limit=60,evidence_ids=all_ids)
     from .research import inspect

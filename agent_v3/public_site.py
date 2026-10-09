@@ -91,11 +91,25 @@ def interpretation(value):
         entry['domains']=domains.get(entry.get('channel_id'),[])
     return result
 
+
+def graph_context(value):
+    """Public short provenance; no extraction proposals, raw documents or actor."""
+    events=[]
+    for event in value.get('events',[]):
+        result=project(event,'event_id topic_id fingerprint status last_seen_at recency entities')
+        result['title']=clean(event['title']) if event['status']=='interpreted' else '待解读关联线索'
+        result['claims']=[quotes(project(c,'claim_id text status facts')) for c in event.get('claims',[])]
+        result['needs']=[quotes(project(n,'label text status facts')) for n in event.get('needs',[])]
+        events.append(result)
+    return {'mode':'local','events':events,'relations':[quotes(project(r,'relation_id subject_id predicate object_id status facts reason')) for r in value.get('relations',[])],
+        'sources':[source(s) for s in value.get('sources',[])],'note':value.get('note'),'public_projection':True}
+
 def topic(store,tid):
     from .discovery import read_topic
     value=read_topic(store,tid);outputs=value.get('business_outputs',{})
     result=project(value,'topic_id fingerprint title')
     result.update(public_projection=True,interpretation=interpretation(value['interpretation']) if value.get('interpretation') else None,
+        graph_context=graph_context(value.get('graph_context',{})),
         evidence=[source(s) for s in value.get('evidence',[])],research_sources=[],discussion_samples=[],research_captures=[],
         followups=[project(f,'followup_id question status attempts retry_at updated_at') for f in value.get('followups',[]) if f['status']!='superseded'],
         tracked_events=[{**project(e,'tracked_id title note'), 'timeline':[

@@ -121,6 +121,11 @@ def basis(store, topic_id, fingerprint=None, *, packet=None, context=True):
     result = {'topics':{topic_id:row[0]}, 'sources':sources}
     if context:
         result['context_version'] = stable_id('context_',dump(store.context()))
+    if packet and packet.get('graph_context'):
+        from .graph_retrieval import guard
+        graph=guard(store,packet['graph_context'])
+        result['graph_version']=graph['graph_version'];result['communities']=graph['communities']
+        result['topics'].update(graph['topics']);result['sources'].update(graph['sources'])
     return result
 
 
@@ -200,6 +205,12 @@ class RuntimeStore:
     def check_basis(self, expected):
         if not expected:
             return
+        if expected.get('graph_version') is not None:
+            from .knowledge_graph import graph_version
+            if graph_version(self)!=expected['graph_version']:raise StaleBasis('图谱索引已变化，拒绝过期交付')
+        for cid,version in expected.get('communities',{}).items():
+            row=self.conn.execute("SELECT fingerprint FROM kg_community WHERE community_id=? AND state='active'",(cid,)).fetchone()
+            if not row or row[0]!=version:raise StaleBasis('主题社区已变化，拒绝过期摘要')
         for tid, version in expected.get('topics',{}).items():
             row = self.conn.execute('SELECT fingerprint FROM topic WHERE topic_id=?',(tid,)).fetchone()
             if not row or row[0] != version:

@@ -228,6 +228,7 @@ class Store(RuntimeStore, EvidenceStore):
         CREATE TABLE IF NOT EXISTS relation_history(
           history_id TEXT PRIMARY KEY,pair_id TEXT,status TEXT,reason TEXT,actor TEXT,created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS event_relation_basis(pair_id TEXT PRIMARY KEY,payload TEXT);
         CREATE TABLE IF NOT EXISTS relation_effect(
           sequence INTEGER PRIMARY KEY AUTOINCREMENT,pair_id TEXT UNIQUE,status TEXT,payload TEXT,created_at TEXT
         );
@@ -276,6 +277,8 @@ class Store(RuntimeStore, EvidenceStore):
             self.conn.commit()
         from .runtime_guard import initialize as initialize_runtime
         initialize_runtime(self)
+        from .knowledge_graph import initialize as initialize_graph
+        initialize_graph(self)
 
     def source_assets(self,query="",kind="",limit=60,*,evidence_ids=None):
         clauses,params=[],[]

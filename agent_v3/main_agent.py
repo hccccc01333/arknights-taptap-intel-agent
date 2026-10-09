@@ -120,7 +120,9 @@ def plan(store,run_id,model,topic_id=None,*,screen_limit=18,screen_only=False):
             'route':{'enum':list(ROUTES)},'action':{'enum':['delegate_research','analyze','watch','archive']},
             'reason':{'type':'string','minLength':4,'maxLength':320},'questions':{'type':'array','maxItems':2,'items':{'type':'string','minLength':4,'maxLength':200}},'query':{'type':'string','maxLength':80}})
         schema=object_schema({'decisions':{'type':'array','items':item,'minItems':len(packets),'maxItems':len(packets)}})
-        value,_=task(store,run_id,model,'main_plan',{'candidates':packets,'business_context':store.context()},schema,PLAN_SYSTEM+TAPTAP_PROMPT,180)
+        from .graph_retrieval import global_context,guard,PROMPT as GRAPH_PROMPT
+        graph=global_context(store,limit=2)
+        value,_=task(store,run_id,model,'main_plan',{'candidates':packets,'business_context':store.context(),'graph_context':graph},schema,PLAN_SYSTEM+TAPTAP_PROMPT+GRAPH_PROMPT,180)
         refs=[d['ref'] for d in value['decisions']]
         if len(set(refs))!=len(packets):raise ValueError('主 Agent 须对每个输入候选判断一次')
         for decision in value['decisions']:
@@ -128,6 +130,9 @@ def plan(store,run_id,model,topic_id=None,*,screen_limit=18,screen_only=False):
             if decision['route']=='unrelated' and decision['action'] not in ('archive','watch'):raise ValueError('无合理联系的候选不投入深度研究')
         expected={'topics':{p['topic_id']:p['fingerprint'] for p in packets},'context_version':context_version,
             'sources':{e['evidence_id']:{k:e.get(k) for k in ('content_hash','url','published_at')} for p in packets for e in p['sources']}}
+        graph_basis=guard(store,graph)
+        expected['graph_version']=graph_basis['graph_version'];expected['communities']=graph_basis['communities']
+        expected['sources'].update(graph_basis['sources']);expected['topics'].update(graph_basis['topics'])
         with store.delivery(run_id,expected):
             for decision in value['decisions']:
                 source=packets[decision.pop('ref')]
@@ -228,6 +233,8 @@ def analyze(store,run_id,job,model):
     tools=GrowthTools(store,0);tools.run_id=run_id
     topic=tools.call('read_topic',{'topic_id':job['topic_id']})
     packet=topic_packet(topic,store.context());packet['research_return']=interpretation['payload']
+    from .graph_retrieval import attach,PROMPT as GRAPH_PROMPT
+    attach(store,packet,job['topic_id'])
     from .runtime_guard import basis
     expected=basis(store,job['topic_id'],job['fingerprint'],packet=packet)
     from .risk import PROMPT,grounded,combine,save as save_risk,verdict,POLICY_VERSION,policy
@@ -241,7 +248,7 @@ def analyze(store,run_id,job,model):
         opportunity['decision']['enum']=['watch','archive']
         for key in ('audience_need','taptap_bridge','growth_goal','hypothesis','validation_plan'):opportunity[key]={'const':'','type':'string'}
         opportunity['prerequisites']={'const':[],'type':'array','items':TEXT}
-    value,usage=task(store,run_id,model,'intelligence',packet,schema,BUSINESS_SYSTEM+TAPTAP_PROMPT+PROMPT+'''
+    value,usage=task(store,run_id,model,'intelligence',packet,schema,BUSINESS_SYSTEM+TAPTAP_PROMPT+PROMPT+GRAPH_PROMPT+'''
 game_signals尽量填写category和platform以归类。patterns每项填写delivery：选择内容形式，写明人群/发布位置，body交付可编辑的成品正文或逐镜内容（至少60字），adaptation_steps是素材替换步骤，usage_boundary写证据和使用边界。content保留来源原话或表达模式；body为原创用法，不能冒充原话。只适合内部研究引用而没有交付正文的摘录不要放patterns。负面或有争议的事件不交付推广素材。''')
     combined=combine(known if known.get('polarity')!='unknown' else None,grounded(value.pop('risk_assessment'),packet))
     safety=verdict({**combined,'policy_version':POLICY_VERSION,'stage':'business_main'})

@@ -28,6 +28,8 @@ def run(store,run_id,model,topic_id,*,timeout_seconds=360):
         current=delivery_current(store,topic,(topic.get('interpretation') or {}).get('payload',{}))
         if not current['business_eligible']:raise ValueError('创意时机已过期或时间依据不足')
     packet=topic_packet(topic,context)
+    from .graph_retrieval import attach,PROMPT as GRAPH_PROMPT
+    attach(store,packet,topic_id)
     from .runtime_guard import basis
     expected=basis(store,topic_id,topic['fingerprint'],packet=packet)
     store._delivery_basis=expected
@@ -74,7 +76,7 @@ def run(store,run_id,model,topic_id,*,timeout_seconds=360):
             plan=json.loads(cached['payload']);Draft202012Validator(schema).validate(plan)
             store.step(run_id,'creative_plan_reused',{'draft_id':draft_id,'original_run_id':cached['run_id']})
         else:
-            plan=task('creative_plan',packet,schema,PLAN_SYSTEM+PROMPT)
+            plan=task('creative_plan',packet,schema,PLAN_SYSTEM+PROMPT+GRAPH_PROMPT)
             with store.delivery(run_id,expected,job=store._active_job):
                 store.conn.execute('INSERT INTO creative_draft VALUES(?,?,?,?,?,?,?,?,?)',
                     (draft_id,topic_id,topic['fingerprint'],context_version,model.model,run_id,now_iso(),'planned',dump(plan)))

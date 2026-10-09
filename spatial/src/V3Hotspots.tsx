@@ -45,10 +45,25 @@ export function HotspotWorkbench({hotspots,candidates,topic,openTopic,Source}:{h
     {topic.tracked_events?.length>0&&<details><summary>系统跟踪进展</summary>{topic.tracked_events.map((e:any)=><section key={e.tracked_id}><h4>当前来源的观测记录</h4>{e.timeline?.slice(0,8).map((n:any,i:number)=><p key={i}>{time(n.observed_at)} · {n.payload?.note||({source_added:'纳入事件跟踪',content_version:'保存正文版本',channel_observed:'观察到渠道收录',board_rank_rise:'榜单排名上升'} as any)[n.kind]||'新增事件观测'}</p>)}</section>)}</details>}
     <details><summary>核查解读的引用</summary>{['background','core','timeline','views','controversies'].flatMap(k=>interpretation[k]||[]).map((c:any,i:number)=><section key={i}><p>{c.text}</p>{c.facts.map((f:any,j:number)=><blockquote key={j}>{f.quote}<small>{f.evidence_id}</small></blockquote>)}</section>)}</details>
    </>:<><h2>待研究线索</h2><p>这条采集记录尚未形成可用解读，不能据此确定事件背景或玩家需求。</p></>}
+   <GraphContext value={topic.graph_context} topicId={topic.topic_id} openTopic={openTopic}/>
    <HotspotOutputs outputs={topic.business_outputs}/>
    <details><summary>核查原文与研究过程</summary>{topic.evidence.map((e:any)=><Source key={e.evidence_id} item={e}/>)}{topic.public_projection?<p className="v2-muted">公开页提供整理后的解读、短引用和来源链接。完整评论、截图及工具执行记录在本地档案中核查。</p>:<ResearchEvidence topic={topic} Source={Source}/>}</details>
   </article>:<p className="v2-empty">打开热点，查看背景、核心、时间线和讨论；来源保留在核查入口。</p>}</aside>
  </div>;
+}
+
+function GraphContext({value,topicId,openTopic}:{value:any;topicId:string;openTopic:(id:string)=>void}){
+ if(!value?.events?.length)return null;
+ const entities=value.events.flatMap((e:any)=>e.entities||[]).filter((e:any,i:number,a:any[])=>a.findIndex(v=>v.entity_id===e.entity_id)===i);
+ const related=value.events.filter((e:any)=>e.topic_id!==topicId&&e.status==='interpreted');
+ const labels:Record<string,string>={FOLLOWED_BY:'有来源支持的后续进展',DEVELOPMENT:'关联进展 · 方向待核查',RELATED_TO:'相关事件 · 身份独立'};
+ return <details className="v3-graph-context"><summary>涉及对象与关联事件{related.length>0?` · ${related.length} 条关联解读`:''}</summary>
+  {entities.length>0&&<p><b>涉及对象</b> {entities.map((e:any)=>e.name).join('、')}</p>}
+  {value.relations?.map((r:any)=><section key={r.relation_id}><h4>{labels[r.predicate]||'来源支持的关系'}</h4><p>{r.reason}</p><SourceReferences ids={(r.facts||[]).map((f:any)=>f.evidence_id)}>{r.facts?.map((f:any,i:number)=><blockquote key={i}>{f.quote}</blockquote>)}</SourceReferences></section>)}
+  {related.map((e:any)=><button key={e.event_id} className="v2-secondary" onClick={()=>openTopic(e.topic_id)}>查看关联解读：{e.title}</button>)}
+  {value.events.flatMap((e:any)=>e.needs||[]).map((n:any,i:number)=><p key={i}><b>有限样本需求推断</b> {n.text}</p>)}
+  <p className="v2-muted">关联事件保留各自身份与时间；共同主题和时间先后不证明热度或因果。</p>
+ </details>;
 }
 
 function HotspotOutputs({outputs}:{outputs:any}){

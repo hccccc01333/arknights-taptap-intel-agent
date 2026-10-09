@@ -70,7 +70,7 @@ class DeepSeekTests(unittest.TestCase):
                 self.assertEqual(result['output_limit'],payload['max_tokens'])
 
     def test_stage_budgets_never_exceed_user_cap(self):
-        for stage,expected in (('main_plan',8192),('research_plan',4096),('interpretation',8192),('event_relation',4096),('intelligence',8192),('creative_production',12288)):
+        for stage,expected in (('main_plan',8192),('research_plan',4096),('interpretation',10240),('community_summary',4096),('event_relation',4096),('intelligence',8192),('creative_production',12288)):
             self.assertEqual(self.invoke(stage=stage)[0]['output_limit'],expected)
         self.assertEqual(self.invoke(effort='max',stage='creative_production',limit=6000)[0]['output_limit'],6000)
         self.assertEqual(self.invoke(effort='high',stage='event_relation')[0]['output_limit'],8192)

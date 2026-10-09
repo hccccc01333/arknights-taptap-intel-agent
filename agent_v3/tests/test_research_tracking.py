@@ -184,7 +184,7 @@ class ResearchTrackingTests(unittest.TestCase):
 
     def test_merge_retains_all_sources_timeline_and_is_reversible(self):
         pair,left,right,*_=self.pair();before=self.store.conn.execute('SELECT COUNT(*) FROM tracked_change').fetchone()[0]
-        tracking.decide(self.store,pair['pair_id'],'development','返程事件的后续回应，测试夹具','fixture')
+        tracking.decide(self.store,pair['pair_id'],'same','同一次返程事件，测试夹具','fixture')
         event=tracking.read_event(self.store,pair['left_id']);self.assertEqual({e['evidence_id'] for e in event['evidence']},{left,right})
         self.assertEqual(len(event['timeline']),before+1)
         tracking.withdraw(self.store,pair['pair_id'],'核对后需要分别研究，测试夹具','fixture')
@@ -242,7 +242,7 @@ class ResearchTrackingTests(unittest.TestCase):
         self.source('第三条后续报道',identifier='third');tracking.observe(self.store)
         with patch('agent_v3.tracking.semantic.pairs',return_value=([(0.92,0,1)],{'method':'fixture'})):tracking.recall(self.store)
         second=self.store.conn.execute("SELECT pair_id FROM event_relation WHERE status='pending'").fetchone()[0]
-        tracking.decide(self.store,second,'development','该事件后续报道，测试夹具','fixture')
+        tracking.decide(self.store,second,'same','该事件的另一条报道，测试夹具','fixture')
         with self.assertRaises(ValueError):tracking.withdraw(self.store,pair['pair_id'],'撤回早期合并判断','fixture')
         tracking.withdraw(self.store,second,'先撤回后续合并判断','fixture');tracking.withdraw(self.store,pair['pair_id'],'再撤回早期合并判断','fixture')
         self.assertEqual(tracking.overview(self.store)['counts']['events'],3)
