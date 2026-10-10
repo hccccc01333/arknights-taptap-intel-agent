@@ -104,7 +104,7 @@ def publication_date(soup,host):
             if isinstance(item,dict) and item.get('@type') in ('NewsArticle','Article','BlogPosting'):
                 candidates.append((item.get('datePublished'),'jsonld.datePublished'))
     if host=='www.3dmgame.com':
-        node=soup.select_one('.news_warp_center .time span')
+        node=soup.select_one('.news_warp_top .time span, .news_warp_center .time span')
         if node:candidates.append((node.get_text(' ',strip=True),'3dm.article.time'))
     ceiling=(datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat(timespec='seconds')
     parsed=[]

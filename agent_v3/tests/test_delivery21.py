@@ -47,8 +47,8 @@ class Delivery21Tests(unittest.TestCase):
             self.assertEqual(queue(self.store),[])
 
     def page(self,stamp):
-        return ('<div class="news_warp_center"><h1>游戏更新</h1><div class="time"><span>'+stamp+
-            '</span></div><p>'+('来源描述已公布的具体游戏变化。'*10)+'</p></div>').encode()
+        return ('<div class="news_warp_top"><h1>游戏更新</h1><div class="time"><span>'+stamp+
+            '</span></div></div><div class="news_warp_center"><p>'+('来源描述已公布的具体游戏变化。'*10)+'</p></div>').encode()
 
     def test_read_detail_recovers_publisher_date_and_records_its_basis(self):
         e=self.news();stamp=(datetime.now(timezone.utc)-timedelta(days=1)).isoformat(timespec='seconds')
@@ -134,6 +134,18 @@ class Delivery21Tests(unittest.TestCase):
         errors=schema_feedback(s,{'knowledge':{'entities':[]},'secret_value':'private fixture text'})
         self.assertIn({'path':'knowledge/relations','constraint':'required'},errors)
         self.assertNotIn('private fixture text',json.dumps(errors));self.assertNotIn('secret_value',json.dumps(errors))
+
+    def test_isolated_profile_registry_preserves_original_business_failure(self):
+        from agent_v3.providers import save
+        from agent_v3.opencode_go import profile
+        f=self.fixture();p=profile('longcat-2.5-preview-free');save(f.store,p)
+        f.store.conn.execute('UPDATE evidence SET published_at=NULL');f.store.conn.commit();scan(f.store)
+        m=f.model();m.model='profile/'+p['id']
+        with patch('agent_v3.research.run',return_value={'calls':0}):
+            result=process(f.store,f.rid,model=m,topic_id=f.tid)
+        self.assertEqual(result['status'],'ai_deferred')
+        self.assertIn('只处理近一周事件',result['error'])
+        self.assertEqual(f.store.overview()['counts']['creative'],0)
 
 
 if __name__=='__main__':unittest.main()

@@ -585,6 +585,10 @@ def run_phase(root, phase):
             directory.mkdir(parents=True, exist_ok=False)
             ledger.start_trial(trial_id, phase)
             store = Store(directory / 'runtime.sqlite3')
+            # Explicitly supplied model profiles also need their isolated
+            # registry entry for failure/backoff lookup; no production settings.
+            from .providers import save as save_profile
+            save_profile(store,profile)
             outcome, report, status, model = {}, None, 'failed', None
             run_id = None
             started = time.monotonic()
