@@ -2,7 +2,7 @@
 
 **持续追踪全网热点，自动研究与积累游戏情报、可用素材，从中识别并产出 TapTap 增长创意的 AI Agent 系统。**
 
-[![版本](https://img.shields.io/badge/version-3.0.0--alpha.20-087f8c)](docs/版本记录.md)
+[![版本](https://img.shields.io/badge/version-3.0.0--alpha.21-087f8c)](docs/版本记录.md)
 [![CI](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml)
 [![网站部署](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml)
 
@@ -15,6 +15,12 @@
 <sub>2026-10-08 线上真实成果页。截图中的数量属于当时的运行快照，以网站最近同步时间为准。</sub>
 
 初次了解项目，可以先看[交付内容](#系统交付什么)和[Agent 分工](#agent-如何工作)；想了解实现，可以继续看[技术栈](#实际技术栈)、[V3 数据链路](#v3-的数据如何变成成果)、[GraphRAG 的实现](#graphrag-思想在-v3-中怎么落地)和[LangGraph 的使用范围](#langgraph-在项目中怎么用)。启动步骤见[本地运行](#本地运行)。
+
+## Alpha21：先查证，再分别交付
+
+修复首轮对照中暴露的入口问题：日期缺失的近期资讯进入限额查证队列，核实前不算当下热点；从来源明确的发布字段补日期，旧闻、未来日期及冲突仍受限制。游戏变化与玩家问题不再以已有热度或TapTap增长承接为研究前提，主Agent先给出研究目的，再独立判断情报、素材与创意。
+
+研究交付按实际输入省去无任务的补查答案和无待查关系的核验字段，缺失字段反馈指向具体路径；仍严格验证来源、引用和风险。旧版本初筛会由自动调度重新评估，未增加人工采集或生成按钮。工程回归与真实修复回测见[版本记录](docs/版本记录.md)；这次修复不能代替新的独立效果实验。
 
 ## Alpha20：Go免费模型与真实校准
 

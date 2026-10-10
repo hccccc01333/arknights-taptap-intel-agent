@@ -17,8 +17,10 @@ def scan(store, hours=168):
     cutoff=(datetime.now(timezone.utc)-timedelta(hours=max(1,min(168,int(hours))))).isoformat(timespec="seconds")
     ceiling=(datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat(timespec="seconds")
     rows=store.conn.execute("""SELECT e.* FROM evidence e WHERE last_seen_at>=? AND last_seen_at<=? AND
-      ((kind='news' AND published_at>=? AND published_at<=?) OR (kind<>'news' AND (kind='ranking' OR EXISTS
-       (SELECT 1 FROM channel_observation o WHERE o.evidence_id=e.evidence_id AND o.observed_at>=?))))""",(cutoff,ceiling,cutoff,ceiling,cutoff)).fetchall()
+      ((kind='news' AND ((published_at>=? AND published_at<=?) OR (published_at IS NULL AND EXISTS
+       (SELECT 1 FROM channel_observation o WHERE o.evidence_id=e.evidence_id AND o.observed_at>=? AND o.observed_at<=?))))
+       OR (kind<>'news' AND (kind='ranking' OR EXISTS
+       (SELECT 1 FROM channel_observation o WHERE o.evidence_id=e.evidence_id AND o.observed_at>=?))))""",(cutoff,ceiling,cutoff,ceiling,cutoff,ceiling,cutoff)).fetchall()
     touched=set(); processed=0
     with store.conn:
         # Polling an old feed item must not keep an expired candidate eligible.
@@ -47,6 +49,8 @@ def scan(store, hours=168):
             for member in members:
                 eid=member["evidence_id"]; platforms.add(member["platform"])
                 if member['kind']=='news':signals.append({'kind':'news_publication','evidence_id':eid,'published_at':member['published_at'],'note':'新闻发布线索，尚未证明热度升温'})
+                if member['kind']=='news' and not member['published_at']:
+                    signals.append({'kind':'publication_date_pending','evidence_id':eid,'note':'来源日期缺失，允许限额补查；采集日期不能作为事件日期'})
                 signature.append([eid,stable_id("text_",member["title"]+"\n"+member["body"]),member['url'],member['published_at']])
                 content_signature.append(signature[-1])
                 observations=store.conn.execute("SELECT * FROM channel_observation WHERE evidence_id=? AND observed_at>=? ORDER BY observed_at",(eid,cutoff)).fetchall()

@@ -27,6 +27,20 @@ def safe_schema_errors(items):
             re.fullmatch(r'[A-Za-z0-9_/-]{1,200}',item['path']) and item.get('constraint') in rules]
 
 
+def schema_feedback(schema,value):
+    """Missing paths come from the trusted schema, never echoed model values."""
+    items=[]
+    for error in Draft202012Validator(schema).iter_errors(value):
+        path='/'.join(map(str,error.absolute_path))
+        if error.validator=='required' and isinstance(error.instance,dict):
+            for name in error.validator_value:
+                if name not in error.instance:
+                    items.append({'path':(path+'/' if path else '')+name,'constraint':'required'})
+        else:items.append({'path':path or 'root','constraint':error.validator})
+        if len(items)>=5:break
+    return safe_schema_errors(items)
+
+
 @dataclass(frozen=True)
 class AgentContract:
     stage: str
@@ -118,6 +132,9 @@ def run_task(model,stage,packet,schema,system,*,timeout_seconds=180):
             raise ValueError('模型最终交付未正常结束')
         contract.validate(output['result'],packet)
     except Exception as error:
+        if output.get('result') is not None:
+            errors=schema_feedback(schema,output['result'])
+            if errors:output['schema_errors']=errors
         # Report only paths/constraint names, never raw source or reasoning values.
         path='/'.join(map(str,getattr(error,'absolute_path',()))) or 'root'
         validator=getattr(error,'validator',None) or type(error).__name__

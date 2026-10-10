@@ -84,11 +84,15 @@ class PublicSourceTests(unittest.TestCase):
         self.assertTrue(any(s['kind']=='news_publication' for s in topic['signals']))
         self.assertFalse(any(s['kind']=='board_rank_rise' for s in topic['signals']))
 
-    def test_old_future_and_undated_feed_items_are_background(self):
+    def test_old_and_future_excluded_but_undated_news_can_be_checked(self):
         for title,stamp in [('old',(datetime.now(timezone.utc)-timedelta(days=9)).isoformat()),
                             ('future',(datetime.now(timezone.utc)+timedelta(days=1)).isoformat()),('undated','invalid')]:
             self.news(title=title,published=stamp)
-        self.assertEqual(queue(self.store),[])
+        pending=queue(self.store)
+        self.assertEqual([p['title'] for p in pending],['undated'])
+        from agent_v3.freshness import assess
+        self.assertFalse(assess(self.store,read_topic(self.store,pending[0]['topic_id']))['business_eligible'])
+        self.assertFalse(self.store.hotspot_feed())
 
     def test_an_expired_candidate_is_not_refreshed_by_polling_an_old_article(self):
         eid=self.news();self.assertEqual(len(queue(self.store)),1)

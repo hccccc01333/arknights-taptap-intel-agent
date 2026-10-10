@@ -232,9 +232,8 @@ class ProfileModel:
                 raise CompletionError('最终回答需为 JSON 对象')
             errors = list(Draft202012Validator(schema).iter_errors(value))
             if errors:
-                from .contracts import safe_schema_errors
-                output['schema_errors']=safe_schema_errors([{'path':'/'.join(map(str,e.absolute_path)) or 'root',
-                                                            'constraint':e.validator} for e in errors[:5]])
+                from .contracts import schema_feedback
+                output['schema_errors']=schema_feedback(schema,value)
                 raise CompletionError('最终 JSON 未通过业务字段约束')
         except (ValueError, TypeError):
             raise StructuredDeliveryError('模型最终交付不完整或不符合 JSON 契约', output) from None

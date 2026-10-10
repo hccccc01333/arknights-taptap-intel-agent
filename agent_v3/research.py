@@ -37,15 +37,18 @@ def inspect(store,topic):
         'note':'有限一级评论样本，不代表总体；互赞、纯起哄、代码/链接、邀请推广与重复标记不直接用于需求推断'},
       'background':{'status':'retrieved_unverified' if linked else 'missing','count':linked,
                     'article_excerpts':sum(e['content_scope']=='article_excerpt' for e in background_sources)},
+      'publication_date':{'status':'missing' if any(not e.get('published_at') for e in direct) else 'present',
+                          'evidence_ids':[e['evidence_id'] for e in direct if not e.get('published_at')],
+                          'note':'来源日期与事件时间不同；未知日期须补查，不能使用采集时间'},
       'material':{'status':'references_only','note':'媒体引用未下载或转录，来源使用条件需核查'}}
 
 
 def plan(store,topic,model=None,mission=None,feedback=None):
     gaps=inspect(store,topic);sources=(topic['evidence'][:9]+topic.get('research_sources',[])[:3])[:12];actions=[]
     for i,e in enumerate(sources):
-        if e['platform'] in READABLE and e['content_scope'] not in ('article_excerpt','video_description','topic_description'):
+        if e['platform'] in READABLE and (not e.get('published_at') or e['content_scope'] not in ('article_excerpt','video_description','topic_description')):
             actions.append({'tool':'read_detail','source_ref':i,'query':''})
-    if gaps['context']['status']=='missing' and gaps['background']['status']=='missing':
+    if (gaps['context']['status']=='missing' or gaps['publication_date']['status']=='missing') and gaps['background']['status']=='missing':
         query=re.sub(r'[【】#\[\]，。！？!?,]',' ',topic['title']).strip()[:60]
         if len(query)>=2:actions.append({'tool':'search_news','source_ref':0,'query':query})
     for i,e in enumerate(sources):
@@ -62,7 +65,7 @@ def plan(store,topic,model=None,mission=None,feedback=None):
         value['actions']=[{'tool':preferred,'source_ref':index or 0,'query':mission['query'] if preferred=='search_web' else ''},*value['actions']][:4]
     planner='policy_fallback'
     if model is not None and getattr(model,'supports_tasks',False):
-        packet={'title':topic['title'],'gaps':gaps,'mission':mission or {},'feedback':feedback or [],'sources':[{k:e[k] for k in ('title','platform','url','content_scope')} for e in sources],
+        packet={'title':topic['title'],'gaps':gaps,'mission':mission or {},'feedback':feedback or [],'sources':[{k:e[k] for k in ('title','platform','url','content_scope','published_at')} for e in sources],
                 'tools':{'read_detail':list(READABLE),'sample_discussion':['taptap','bilibili'],
                          'search_news':'官方公开新闻搜索，结果是待核对背景，不是升温证据',
                          'search_web':'公开网页搜索，按预算补读正文；日期与事件归属待核对',
@@ -75,6 +78,10 @@ def plan(store,topic,model=None,mission=None,feedback=None):
         response=run_task(model,'research_plan',packet,PLAN_SCHEMA,
            '你是研究子 Agent，根据主 Agent 问题、缺口与上轮工具结果选择最多四个有必要的动作，使用当前sources数组的source_ref。先借图谱定位实体、相关事件和待查关系，再补读实际来源。优先用爬虫read_detail获取正文与sample_discussion真实讨论；静态正文不足时browse_page，动态图片文字用screenshot_ocr。评论接口失败或没有样本时可read_comments_visual，先滑动定位评论区再截图识别。搜索命中可在下一轮读取；失败不要反复重试相同动作，改查询或来源。查询只写主题词。不需要则空列表。不要预设热点必须与游戏相关，不把平台简介或 OCR 广告当评论。'+PROMPT,timeout_seconds=180)
         Draft202012Validator(PLAN_SCHEMA).validate(response['result']);value=response['result'];planner='model'
+    # A model may omit the collection-date gap; bounded source reading is still
+    # required before an undated news item can become current business evidence.
+    date_reads=[a for a in actions if a['tool']=='read_detail' and not sources[a['source_ref']].get('published_at')]
+    value['actions']=(date_reads+[a for a in value['actions'] if a not in date_reads])[:4]
     for a in value['actions']:
         if a['source_ref']>=len(sources):raise ValueError('研究计划引用未知来源')
         e=sources[a['source_ref']]

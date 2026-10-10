@@ -35,26 +35,29 @@ def has_automatic_work(store):
     from agent_v2.store import stable_id
     context=stable_id('context_',dump(store.context()));cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(timespec='seconds')
     from .followups import due
+    from .main_agent import PLAN_VERSION
     if due(store):return True
     return bool(store.conn.execute('''SELECT 1 FROM topic t LEFT JOIN main_decision d ON d.topic_id=t.topic_id
       AND d.fingerprint=t.fingerprint AND d.context_version=? WHERE t.eligible=1 AND t.last_seen_at>=?
-      AND (d.topic_id IS NULL OR json_extract(d.payload,'$.action') IN ('delegate_research','analyze','watch')
+      AND (d.topic_id IS NULL OR COALESCE(json_extract(d.payload,'$.decision_version'),'')<>? OR json_extract(d.payload,'$.action') IN ('delegate_research','analyze','watch')
         AND COALESCE(json_extract(d.payload,'$.next_review_at'),'')<=?
         AND NOT EXISTS (SELECT 1 FROM topic_intelligence i WHERE i.topic_id=t.topic_id AND i.fingerprint=t.fingerprint
           AND json_extract(i.payload,'$.context_version')=? AND json_extract(i.payload,'$.contract_version')=? AND
             ((json_extract(i.payload,'$.opportunity.decision') IN ('watch','archive') AND
               (json_extract(i.payload,'$.next_review_at') IS NULL OR json_extract(i.payload,'$.next_review_at')>?)) OR
              EXISTS (SELECT 1 FROM work_item w WHERE w.topic_id=t.topic_id AND w.fingerprint=t.fingerprint AND w.stage='creative' AND w.status='succeeded'))))
-      LIMIT 1''',(context,cutoff,now_iso(),context,work.INTELLIGENCE_VERSION,now_iso())).fetchone())
+      LIMIT 1''',(context,cutoff,PLAN_VERSION,now_iso(),context,work.INTELLIGENCE_VERSION,now_iso())).fetchone())
 
 
 def unscreened_count(store):
     from agent_v2.store import stable_id
     context=stable_id('context_',dump(store.context()))
     cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(timespec='seconds')
+    from .main_agent import PLAN_VERSION
     return store.conn.execute('''SELECT COUNT(*) FROM topic t LEFT JOIN main_decision d ON d.topic_id=t.topic_id
-      AND d.fingerprint=t.fingerprint AND d.context_version=? WHERE t.eligible=1 AND t.last_seen_at>=? AND d.topic_id IS NULL''',
-      (context,cutoff)).fetchone()[0]
+      AND d.fingerprint=t.fingerprint AND d.context_version=? WHERE t.eligible=1 AND t.last_seen_at>=?
+      AND (d.topic_id IS NULL OR COALESCE(json_extract(d.payload,'$.decision_version'),'')<>?)''',
+      (context,cutoff,PLAN_VERSION)).fetchone()[0]
 
 
 def start_screening():

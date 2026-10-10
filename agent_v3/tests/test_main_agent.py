@@ -37,7 +37,8 @@ class MainAgentTests(unittest.TestCase):
             def run_task(self,stage,packet,schema,system,**kwargs):
                 self.calls.append(stage)
                 if stage=='main_plan':
-                    value={'decisions':[{'ref':c['ref'],'route':self.route,'action':self.action,'reason':'需要核对玩法和表达语境',
+                    value={'decisions':[{'ref':c['ref'],'route':self.route,'action':self.action,
+                        'research_goal':'game_change' if self.action in ('delegate_research','analyze') and self.route!='unrelated' else 'none','reason':'需要核对玩法和表达语境',
                         'questions':['玩法和表达分别有哪些实际依据？'],'query':c['title'][:80]} for c in packet['candidates']]}
                 elif stage=='research_plan':value={'reason':'测试中正文已充分，无联网动作','actions':[]}
                 elif stage=='interpretation':

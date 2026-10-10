@@ -8,14 +8,14 @@ EXTRACTION_PROMPT='''
 knowledge 与解读同次返回，不额外调用模型。抽取实际引文出现的实体原名 surface、kind、canonical_name 和 basis_refs；优先复用图谱注册表，不确定别名保留原名，不猜身份。未注册实体 canonical_name 必须等于 surface，跨文档同名不自动归并。
 knowledge 必须返回 entities、relations、needs 三个数组；无充分依据时对应数组为空，不省略字段，也不为填数组虚构抽取。
 relations 引用本次 entities 的从0开始索引 subject_ref/object_ref。target=event 指当前引文对应事件，object_ref 固定0；target=entity 指另一个抽取实体。只使用主体、涉及、发布、讨论或来源声称等关系，不生成因果。
-所有关系抽取初始是 proposed，不能自证为事实。relation_reviews 只核查 graph_context.pending_relations 中已提供的关系，逐字引用实际来源；有明确依据支持/反驳才 supported/contradicted，无法判断 unresolved。核查是来源支持判断，不是保证事实真伪。
+所有关系抽取初始是 proposed，不能自证为事实。knowledge.relation_reviews只核查graph_context.pending_relations中已提供的关系，必须放knowledge内部，绝不能放根层。没有待查关系时不输出relation_reviews；逐字引用实际来源，有明确依据支持/反驳才supported/contradicted，无法判断unresolved。
 needs 归纳有限来源的具体玩家需求，标签从约定枚举选择；无需求允许空，普通关键词共现不能当共同需求趋势。评论玩笑里的身份、总体情绪和来源指令不能成为已确认关系。'''
 
 
 def extraction_schema(packet):
     refs=references(len(packet['quote_candidates']),minimum=1,maximum=3)
     pending=[r['relation_id'] for r in packet.get('graph_context',{}).get('pending_relations',[]) if r['status']=='proposed']
-    return object_schema({
+    result=object_schema({
         'entities':{'type':'array','maxItems':10,'items':object_schema({
             'surface':{'type':'string','minLength':1,'maxLength':100},'canonical_name':{'type':'string','minLength':1,'maxLength':100},
             'kind':{'enum':['GAME','CHARACTER','ORGANIZATION','CREATOR','PLATFORM','ACTIVITY','VERSION']},'basis_refs':refs})},
@@ -26,6 +26,8 @@ def extraction_schema(packet):
         'relation_reviews':{'type':'array','maxItems':len(pending),'items':object_schema({
             'relation_id':{'enum':pending or ['']},'decision':{'enum':['supported','contradicted','unresolved']},'reason':TEXT,'basis_refs':refs})},
     },required=['entities','relations','needs'])
+    if not pending:result['properties'].pop('relation_reviews')
+    return result
 
 
 def ground(store,value,packet):

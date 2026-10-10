@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import re
+import json
 import time
+from datetime import datetime,timedelta,timezone
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse, urljoin
 
@@ -15,8 +17,9 @@ from agent_v2.store import now_iso
 
 FEEDS = {name: f"https://www.chinanews.com.cn/rss/{name}.xml"
          for name in ("society", "culture", "life")}
-DETAIL_PATHS = {"chinanews": "v3:read_source:chinanews", "tieba": "v3:read_source:tieba"}
-SCOPES = {DETAIL_PATHS["chinanews"]: "article_excerpt", DETAIL_PATHS["tieba"]: "topic_description"}
+DETAIL_PATHS = {"chinanews": "v3:read_source:chinanews", "tieba": "v3:read_source:tieba", "gamemedia":"v3:read_source:gamemedia"}
+SCOPES = {DETAIL_PATHS["chinanews"]: "article_excerpt", DETAIL_PATHS["tieba"]: "topic_description",DETAIL_PATHS['gamemedia']:'article_excerpt'}
+GAME_HOSTS={'www.gamersky.com','www.3dmgame.com','www.gcores.com'}
 
 
 def allowed_url(url, hosts):
@@ -84,22 +87,55 @@ def fetch_feed(scope):
     return parse_feed(content)
 
 
-def parse_detail(content, platform):
+def publication_date(soup,host):
+    """Publisher-declared publication only; never URL dates or collection time."""
+    candidates=[]
+    for selector in ('meta[property="article:published_time"]','meta[itemprop="datePublished"]','time[itemprop="datePublished"]'):
+        for node in soup.select(selector)[:4]:
+            candidates.append((node.get('content') or node.get('datetime') or node.get_text(' ',strip=True),selector))
+    for node in soup.select('script[type="application/ld+json"]')[:4]:
+        if len(node.get_text())>64000:continue
+        try:value=json.loads(node.get_text())
+        except (ValueError,TypeError):continue
+        items=value if isinstance(value,list) else value.get('@graph',[value]) if isinstance(value,dict) else []
+        if isinstance(items,dict):items=[items]
+        if not isinstance(items,list):continue
+        for item in items[:12]:
+            if isinstance(item,dict) and item.get('@type') in ('NewsArticle','Article','BlogPosting'):
+                candidates.append((item.get('datePublished'),'jsonld.datePublished'))
+    if host=='www.3dmgame.com':
+        node=soup.select_one('.news_warp_center .time span')
+        if node:candidates.append((node.get_text(' ',strip=True),'3dm.article.time'))
+    ceiling=(datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat(timespec='seconds')
+    parsed=[]
+    for raw,selector in candidates[:20]:
+        if not isinstance(raw,str) or len(raw)>100:continue
+        date=timestamp(raw)
+        if date and '2000'<=date<=ceiling:parsed.append({'published_at':date,'raw':raw,'selector':selector})
+    # Conflicting calendar dates remain unknown, rather than silently choosing.
+    if len({datetime.fromisoformat(p['published_at']).astimezone(timezone(timedelta(hours=8))).date() for p in parsed})>1:
+        return {'status':'conflicting','published_at':None,'basis_kind':'publisher_publication_metadata'}
+    return {'status':'present','basis_kind':'publisher_publication_metadata',**parsed[0]} if parsed else {
+        'status':'missing','published_at':None,'basis_kind':'publisher_publication_metadata'}
+
+
+def parse_detail(content, platform, *, host=''):
     soup = BeautifulSoup(content, "html.parser")
-    selector = ".left_zw" if platform == "chinanews" else ".topic-desc"
+    publication=publication_date(soup,host)
+    selector = ".left_zw" if platform == "chinanews" else ".Mid2L_con, .news_warp_center, article" if platform=='gamemedia' else ".topic-desc"
     region = soup.select_one(selector)
     if region is None:
         return None
     for noise in region.select("script,style,nav,footer,aside"):
         noise.decompose()
-    paragraphs = region.select("p") if platform == "chinanews" else []
+    paragraphs = region.select("p") if platform in ("chinanews","gamemedia") else []
     body = "\n".join(p.get_text(" ", strip=True) for p in paragraphs) if paragraphs else region.get_text(" ", strip=True)
-    minimum = 50 if platform == "chinanews" else 20
+    minimum = 50 if platform in ("chinanews","gamemedia") else 20
     if len(body) < minimum:
         return None
     return {"body": body[:6000], "content_truncated": len(body) > 6000,
-            "scope": "article_excerpt" if platform == "chinanews" else "topic_description",
-            "parser_version": "public-detail-v1", "comments_read": False}
+            "scope": "article_excerpt" if platform in ("chinanews","gamemedia") else "topic_description",
+            "publication":publication,"parser_version": "public-detail-v2", "comments_read": False}
 
 
 def read_source(store, evidence_id):
@@ -108,14 +144,15 @@ def read_source(store, evidence_id):
     if platform not in DETAIL_PATHS:
         return legacy_read(store, evidence_id)
     url = original["url"] or ""
-    hosts = {"www.chinanews.com.cn"} if platform == "chinanews" else {"tieba.baidu.com"}
+    hosts = {"www.chinanews.com.cn"} if platform == "chinanews" else GAME_HOSTS if platform=='gamemedia' else {"tieba.baidu.com"}
     if platform == "tieba" and not re.fullmatch(r"/hottopic/browse/hottopic", urlparse(url).path):
         raise ValueError("贴吧仅支持公开话题简介")
     content, resolved_url = read_public(url, hosts)
-    detail = parse_detail(content, platform)
+    detail = parse_detail(content, platform,host=urlparse(resolved_url).hostname)
     if not detail:
         return {"status": "unavailable", "note": "页面没有可靠正文区域，保留标题/摘要。"}
     store.upsert_evidence({**original, "body": detail["body"], "last_seen_at": now_iso(),
+                           "published_at":original['published_at'] or detail['publication']['published_at'],
                            "metrics": {}, "source_path": DETAIL_PATHS[platform]})
     store.conn.commit()
     return {"status": "ok", "metadata": {k: v for k, v in detail.items() if k != "body"} |

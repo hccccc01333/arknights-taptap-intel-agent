@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 
 from agent_v2.ingest import clean,timestamp,normalize
 from agent_v2.store import now_iso,dump,stable_id
-from .public_sources import read_public,allowed_url
+from .public_sources import read_public,allowed_url,publication_date
 from .materials import capture
 
 ARTICLE_HOSTS={'www.chinanews.com.cn','www.chinanews.com','www.news.cn','www.xinhuanet.com',
@@ -37,6 +37,7 @@ def article(url):
     if not allowed_url(url,ARTICLE_HOSTS):raise ValueError('该网页尚未接入正文读取，保留搜索摘要')
     raw,resolved=read_public(url,ARTICLE_HOSTS,max_bytes=1024*1024,timeout=18)
     soup=BeautifulSoup(raw,'html.parser')
+    publication=publication_date(soup,urlparse(resolved).hostname)
     for tag in soup.select('script,style,nav,footer,header,form,aside'):tag.decompose()
     container=soup.select_one('article,#artibody,#articleContent,.article-content,.content-detail,main') or soup
     paragraphs=[p.get_text(' ',strip=True) for p in container.find_all('p')]
@@ -45,7 +46,7 @@ def article(url):
     if len(body)<80 or any(s in body[:300] for s in ('请输入验证码','访问过于频繁','Access Denied')):
         raise ValueError('网页未取得可靠正文，未计为已读')
     return {'body':body[:6000],'resolved_url':resolved,'content_truncated':len(body)>6000,
-        'scope':'article_excerpt','comments_read':False}
+        'scope':'article_excerpt','comments_read':False,'publication':publication}
 
 
 def background(store,topic_id,query,*,max_calls=3):
@@ -84,7 +85,9 @@ def background(store,topic_id,query,*,max_calls=3):
                 try:
                     detail=article(raw['url'])
                     with store.conn:
-                        store.upsert_evidence({**item,'body':detail['body'],'source_path':'v3:read_source:web'})
+                        store.upsert_evidence({**item,'body':detail['body'],
+                            'published_at':detail.get('publication',{}).get('published_at') or item['published_at'],
+                            'source_path':'v3:read_source:web'})
                         store.conn.execute('INSERT INTO source_read_meta VALUES(?,?,?) ON CONFLICT(evidence_id) DO UPDATE SET source_version=excluded.source_version,payload=excluded.payload',
                             (item['evidence_id'],store.snapshot(item['evidence_id']),dump({**detail,'requested_url':raw['url']})))
                         stamp=now_iso();retry=(datetime.now(timezone.utc)+timedelta(hours=6)).isoformat(timespec='seconds')
