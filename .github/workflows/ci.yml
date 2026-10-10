@@ -18,6 +18,7 @@ jobs:
       - name: Validate automatic Agent and public publication contracts
         run: >-
           python -m unittest
+          agent_v3.tests.test_go20
           agent_v3.tests.test_benchmark
           agent_v3.tests.test_providers18
           agent_v3.tests.test_graph17

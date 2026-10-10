@@ -1,4 +1,5 @@
 """Grounded optional extraction and cached community summaries by the existing child."""
+import copy
 from agent_v2.store import dump,now_iso
 from .task_packets import object_schema,references,TEXT
 from . import knowledge_graph as kg,graph_retrieval as retrieval
@@ -32,6 +33,16 @@ def ground(store,value,packet):
         for item in value.get(section,[]):
             item['facts']=[kg.proof(kg.source(store,packet['quote_candidates'][i]['evidence_id']),packet['quote_candidates'][i]['quote']) for i in item.pop('basis_refs')]
     return value
+
+
+def validate_extraction(store,topic_id,value,packet):
+    # Validate a copy: do not mutate the raw final output or retry packet.
+    proposed={'knowledge':ground(store,copy.deepcopy(value['knowledge']),packet),'source_matches':[]}
+    for match in value.get('source_matches',[]):
+        proposed['source_matches'].append({'relation':match['relation'],'facts':[
+            {k:packet['quote_candidates'][i][k] for k in ('evidence_id','quote')}
+            for i in (match['source_basis_ref'],match['direct_basis_ref'])]})
+    kg.validate_knowledge(store,topic_id,proposed)
 
 
 def summarize(store,run_id,model,*,limit=1):

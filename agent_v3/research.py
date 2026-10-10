@@ -73,7 +73,7 @@ def plan(store,topic,model=None,mission=None,feedback=None):
         packet['graph_context']=local_context(store,topic_id=topic['topic_id'],limit=4)
         packet['tools'].update({name:'本地只读图查询，不消耗联网预算；query 为实体原名或主题关键词。返回状态与引文，不是事实认证。' for name in GRAPH_TOOLS})
         response=run_task(model,'research_plan',packet,PLAN_SCHEMA,
-           '你是研究子 Agent，根据主 Agent 问题、缺口与上轮工具结果选择最多四个有必要的动作，使用当前sources数组的source_ref。先借图谱定位实体、相关事件和待查关系，再补读实际来源。优先用爬虫read_detail获取正文与sample_discussion真实讨论；静态正文不足时browse_page，动态图片文字用screenshot_ocr。评论接口失败或没有样本时可read_comments_visual，先滑动定位评论区再截图识别。搜索命中可在下一轮读取；失败不要反复重试相同动作，改查询或来源。查询只写主题词。不需要则空列表。不要预设热点必须与游戏相关，不把平台简介或 OCR 广告当评论。'+PROMPT,timeout_seconds=60)
+           '你是研究子 Agent，根据主 Agent 问题、缺口与上轮工具结果选择最多四个有必要的动作，使用当前sources数组的source_ref。先借图谱定位实体、相关事件和待查关系，再补读实际来源。优先用爬虫read_detail获取正文与sample_discussion真实讨论；静态正文不足时browse_page，动态图片文字用screenshot_ocr。评论接口失败或没有样本时可read_comments_visual，先滑动定位评论区再截图识别。搜索命中可在下一轮读取；失败不要反复重试相同动作，改查询或来源。查询只写主题词。不需要则空列表。不要预设热点必须与游戏相关，不把平台简介或 OCR 广告当评论。'+PROMPT,timeout_seconds=180)
         Draft202012Validator(PLAN_SCHEMA).validate(response['result']);value=response['result'];planner='model'
     for a in value['actions']:
         if a['source_ref']>=len(sources):raise ValueError('研究计划引用未知来源')

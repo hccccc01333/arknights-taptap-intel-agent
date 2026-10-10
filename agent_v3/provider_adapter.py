@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import time
+import uuid
 
 import requests
 from jsonschema import Draft202012Validator
@@ -63,6 +64,9 @@ def request_body(p, stage, packet, schema, system):
         if p['output_mode']=='json_object':body['text']={'format':{'type':'json_object'}}
         elif p['output_mode']=='json_schema':body['text']={'format':{'type':'json_schema','name':'agent_delivery','schema':schema}}
         if mode=='reasoning_effort' and effort!='default':body['reasoning']={'effort':effort}
+    from .opencode_go import BASE_URL
+    if p['base_url'] == BASE_URL and p['protocol'] == 'openai_chat':
+        body['stream'] = True
     return body, budget
 
 
@@ -128,6 +132,7 @@ class ProfileModel:
         self.model = 'profile/' + profile['id']
         self.transport = self.profile['protocol']
         self.last_session = None
+        self.go_session = 'taptap-' + uuid.uuid4().hex
         if self.profile['auth_required'] and not providers.credential(self.profile):
             raise LLMUnavailable('未配置所选供应商的 API Key 环境变量')
 
@@ -141,6 +146,9 @@ class ProfileModel:
         if p['auth_required'] and not key:
             raise LLMUnavailable('所选供应商凭证不可用')
         headers = {'Content-Type': 'application/json'}
+        from .opencode_go import BASE_URL, headers as go_headers
+        if p['base_url'] == BASE_URL:
+            headers.update(go_headers(self.go_session))
         anthropic = p['protocol'] == 'anthropic_messages'
         if anthropic:
             headers['anthropic-version'] = '2023-06-01'
@@ -150,9 +158,10 @@ class ProfileModel:
             headers['Authorization'] = 'Bearer ' + key
         endpoint = p['base_url'] + {'anthropic_messages':'/messages','openai_responses':'/responses','openai_chat':'/chat/completions'}[p['protocol']]
         started = time.monotonic()
+        stream_reasoning = False
         try:
             with requests.post(endpoint, json=body, headers=headers,
-                               timeout=(min(10, timeout_seconds), min(60, timeout_seconds)),
+                               timeout=(min(10, timeout_seconds), min(180 if p['base_url'] == BASE_URL else 60, timeout_seconds)),
                                stream=True, allow_redirects=False) as response:
                 if response.status_code != 200:
                     # Neither error payloads nor credential-bearing request URLs enter logs.
@@ -160,14 +169,19 @@ class ProfileModel:
                     reason = {400: '参数或模型能力不兼容', 401: '凭证或权限不可用', 402: '账户额度不足',
                               403: '服务拒绝访问', 404: '接口或模型不存在', 429: '模型服务限流'}.get(code, '模型服务未完成请求')
                     raise LLMUnavailable(f'HTTP {code}: {reason}')
-                data = bytearray()
-                for chunk in response.iter_content(chunk_size=1):
-                    if time.monotonic() - started > timeout_seconds:
-                        raise LLMUnavailable('模型响应超过任务时间预算')
-                    data.extend(chunk)
-                    if len(data) > 2000000:
-                        raise LLMUnavailable('模型响应超过大小预算')
-                raw = json.loads(data)
+                content_type = getattr(response,'headers',{}).get('Content-Type','')
+                if body['stream'] and isinstance(content_type,str) and 'text/event-stream' in content_type.lower():
+                    from .opencode_go import read_stream
+                    raw, stream_reasoning = read_stream(response, started, timeout_seconds)
+                else:
+                    data = bytearray()
+                    for chunk in response.iter_content(chunk_size=1):
+                        if time.monotonic() - started > timeout_seconds:
+                            raise LLMUnavailable('模型响应超过任务时间预算')
+                        data.extend(chunk)
+                        if len(data) > 2000000:
+                            raise LLMUnavailable('模型响应超过大小预算')
+                    raw = json.loads(data)
         except requests.RequestException:
             raise LLMUnavailable('模型连接超时或中断，任务保留') from None
         except (ValueError, TypeError):
@@ -180,6 +194,7 @@ class ProfileModel:
                 parts=responses_parts(raw);message={}
             else:
                 message, parts = completion_parts(raw)
+                parts['reasoning_present'] |= stream_reasoning
         except CompletionError:
             raise LLMUnavailable('模型接口响应格式无效') from None
         actual = raw.get('model')
@@ -191,7 +206,8 @@ class ProfileModel:
         output = {'model': self.model, 'api_model': actual, 'result': None, 'usage': parts['usage'],
                   'transport': self.transport, 'seconds': round(time.monotonic() - started, 3),
                   'request_id': raw.get('id') if isinstance(raw.get('id'), str) and len(raw['id']) <= 200 else None,
-                  'session_id': None, 'reasoning_present': parts['reasoning_present'],
+                  'session_id': self.go_session if p['base_url'] == BASE_URL else None,
+                  'reasoning_present': parts['reasoning_present'],
                   'reasoning_effort': p['reasoning_effort'], 'output_limit': budget,
                   'finish_reason': parts['finish_reason'], 'reported_cost': cost,
                   'cost_status': 'reported' if cost is not None else 'provider_billed_not_reported',
@@ -216,6 +232,9 @@ class ProfileModel:
                 raise CompletionError('最终回答需为 JSON 对象')
             errors = list(Draft202012Validator(schema).iter_errors(value))
             if errors:
+                from .contracts import safe_schema_errors
+                output['schema_errors']=safe_schema_errors([{'path':'/'.join(map(str,e.absolute_path)) or 'root',
+                                                            'constraint':e.validator} for e in errors[:5]])
                 raise CompletionError('最终 JSON 未通过业务字段约束')
         except (ValueError, TypeError):
             raise StructuredDeliveryError('模型最终交付不完整或不符合 JSON 契约', output) from None

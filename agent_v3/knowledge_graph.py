@@ -110,8 +110,7 @@ def store_claim(store,event_id,text,facts,run_id=None,status='source_attributed'
     return key
 
 
-def ingest_interpretation(store,topic_id,fingerprint,value,run_id=None):
-    """Reuse grounded AI interpretation; optional extraction adds no model call."""
+def event_mapping(store,topic_id,value):
     from .tracking import root_id
     mapped={r['evidence_id']:root_id(store,r['tracked_id']) for r in store.conn.execute('''SELECT t.* FROM tracked_member t
         JOIN topic_member m USING(evidence_id) WHERE m.topic_id=? AND m.active=1''',(topic_id,))}
@@ -121,6 +120,43 @@ def ingest_interpretation(store,topic_id,fingerprint,value,run_id=None):
     for match in value.get('source_matches',[]):
         if match.get('relation')=='same_event' and anchor:
             for fact in match.get('facts',[]):mapped[fact['evidence_id']]=anchor
+    return mapped
+
+
+def validate_knowledge(store,topic_id,value):
+    """Read-only preflight; the write path uses the identical evidence rules."""
+    from .main_agent import SemanticDeliveryError
+    mapped=event_mapping(store,topic_id,value);knowledge=value.get('knowledge',{})
+    entities=knowledge.get('entities',[])
+    def reject(path,rule):raise SemanticDeliveryError('knowledge/'+path,rule)
+    for i,mention in enumerate(entities):
+        facts=mention.get('facts',[])
+        if not current_facts(store,facts) or not any(mention['surface'] in f['quote'] for f in facts):
+            reject('entities/'+str(i)+'/basis_refs','引用须包含 surface 的逐字原名；没有依据则不抽取该实体')
+        linked=graph_entities.resolve(store,mention['surface'],' '.join(f['quote'] for f in facts))
+        if not linked.get('entity') and mention['canonical_name']!=mention['surface']:
+            reject('entities/'+str(i)+'/canonical_name','未注册实体保留来源原名，不猜测别名')
+    for i,edge in enumerate(knowledge.get('relations',[])):
+        path='relations/'+str(i);facts=edge.get('facts',[])
+        if edge['predicate'] not in ('ABOUT','PUBLISHED','PARTICIPATES_IN','DISCUSSES','SOURCE_ASSERTS') or edge['target'] not in ('entity','event'):
+            reject(path,'只允许契约列出的非因果关系')
+        if not 0<=edge['subject_ref']<len(entities) or edge['target']=='entity' and not 0<=edge['object_ref']<len(entities):
+            reject(path,'实体索引须存在于本次 entities 数组')
+        if not current_facts(store,facts) or edge['target']=='event' and not mapped.get(facts[0]['evidence_id']):
+            reject(path+'/basis_refs','关系须有当前来源，事件关系须引用已核对的当前事件')
+    for i,need in enumerate(knowledge.get('needs',[])):
+        if need['label'] not in NEEDS or not current_facts(store,need.get('facts',[])):
+            reject('needs/'+str(i),'需求须使用约定标签和当前来源引用')
+    for i,review in enumerate(knowledge.get('relation_reviews',[])):
+        row=store.conn.execute("SELECT payload FROM kg_relation WHERE relation_id=? AND status='proposed'",(review['relation_id'],)).fetchone()
+        if not row or not current_facts(store,json.loads(row[0])['facts']) or not current_facts(store,review.get('facts',[])):
+            reject('relation_reviews/'+str(i),'只能核查仍待确认且有当前引文的关系')
+    return mapped
+
+
+def ingest_interpretation(store,topic_id,fingerprint,value,run_id=None):
+    """Reuse grounded AI interpretation; optional extraction adds no model call."""
+    mapped=validate_knowledge(store,topic_id,value)
     for section in ('core','controversies'):
         for claim in value.get(section,[]):
             facts=[]

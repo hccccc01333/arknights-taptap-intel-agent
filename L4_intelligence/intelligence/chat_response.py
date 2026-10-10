@@ -32,7 +32,9 @@ def completion_parts(data):
     if content is not None and not isinstance(content, str):
         raise CompletionError('最终 content 不是字符串')
     # Thinking has its own field. It is neither an answer nor a JSON fallback.
-    reasoning_present = isinstance(message.get('reasoning_content'), str) and bool(message['reasoning_content'])
+    reasoning_present = any(isinstance(message.get(k), str) and bool(message[k])
+                            for k in ('reasoning_content', 'reasoning')) or bool(
+                                isinstance(message.get('reasoning_details'), list) and message['reasoning_details'])
     return message, {'content': content or '', 'finish_reason': choice.get('finish_reason'),
                      'reasoning_present': reasoning_present, 'usage': usage_counts(data.get('usage'))}
 

@@ -13,6 +13,7 @@ import re
 import sqlite3
 import subprocess
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone, timedelta
 from contextlib import ExitStack
@@ -20,7 +21,7 @@ from unittest.mock import patch
 
 from agent_v2.store import dump, now_iso
 
-VERSION = 'agent-benchmark-v1'
+VERSION = 'agent-benchmark-v2'
 ARMS = ('A', 'B', 'C')
 METRICS = ('facts', 'dates', 'citations', 'unsupported_assertions', 'risk_refusal')
 VERDICTS = ('pass', 'fail', 'unverified', 'not_applicable')
@@ -166,6 +167,14 @@ def freeze(root, selected, *, phase='formal', order_seed=20261010):
              'gold_hash': digest(gold),
              'research_units_per_trial': 6, 'model_calls_per_trial': 16,
              'repetitions': 1, 'pricing': PRICING}
+    if (root / 'budget.sqlite3').exists():
+        ledger = Ledger(root)
+        try:
+            if ledger.conn.execute('SELECT 1 FROM authorization').fetchone():
+                auth = ledger.authorization()
+                value.update(authorization_hash=digest(auth), pricing=auth['pricing'])
+        finally:
+            ledger.close()
     value['manifest_hash'] = digest(value)
     write_new(root / f'{phase}-gold.json', gold)
     write_new(root / f'{phase}.json', value)
@@ -206,8 +215,24 @@ class Ledger:
     def authorization(self):
         row = self.conn.execute('SELECT payload FROM authorization WHERE id=1').fetchone()
         if not row:
-            raise BudgetExceeded('尚未记录充值完成和实验费用授权')
+            raise BudgetExceeded('尚未记录实验模型和资源预算授权')
         return json.loads(row[0])
+
+    def authorize_go(self, model, note, *, max_calls=220, pilot_calls=40, max_tokens=4000000):
+        from .opencode_go import profile, PRICING as go_pricing
+        if (not note or type(max_calls) is not int or not 1 <= pilot_calls <= max_calls <= 220
+                or type(pilot_calls) is not int or type(max_tokens) is not int or not 1 <= max_tokens <= 4000000):
+            raise ValueError('免费模型也需要有限的请求、token与校准预算')
+        p = profile(model)
+        value = {'at': now_iso(), 'note': note, 'pricing': go_pricing,
+                 'profile': p, 'model': model, 'reasoning_effort': p['reasoning_effort'],
+                 'output_limit': p['output_limit'], 'max_calls': max_calls,
+                 'pilot_calls': pilot_calls, 'max_tokens': max_tokens}
+        with self.conn:
+            self.conn.execute('INSERT INTO authorization VALUES(1,?)', (dump(value),))
+            self.conn.execute('''CREATE TABLE resource_reservations(
+              call_id TEXT PRIMARY KEY,input_bound INTEGER,output_bound INTEGER)''')
+        return value
 
     def start_trial(self, trial_id, phase):
         # A crashed or failed trial is never silently rerun to improve a score.
@@ -216,7 +241,8 @@ class Ledger:
 
     def reserve(self, trial_id, phase, stage, input_bound, output_bound):
         auth = self.authorization()
-        reserved = input_bound * 2 + output_bound * 8  # integer microyuan
+        pricing = auth['pricing']
+        reserved = input_bound * pricing['input_per_million'] + output_bound * pricing['output_per_million']
         self.conn.execute('BEGIN IMMEDIATE')
         try:
             rows = self.conn.execute('SELECT phase,COALESCE(charged,reserved) charge FROM calls').fetchall()
@@ -224,12 +250,30 @@ class Ledger:
             pilot = sum(r['charge'] for r in rows if r['phase'] == 'pilot')
             count = self.conn.execute('SELECT COUNT(*) FROM calls WHERE trial_id=? AND phase=?',
                                       (trial_id, phase)).fetchone()[0]
-            if spent + reserved > auth['cap_microyuan'] or (
-                    phase == 'pilot' and pilot + reserved > auth['pilot_microyuan']) or count >= 16:
+            if 'profile' in auth:
+                if len(rows) >= auth['max_calls'] or (phase == 'pilot' and sum(
+                        r['phase'] == 'pilot' for r in rows) >= auth['pilot_calls']):
+                    raise BudgetExceeded('免费模型请求预算已到')
+                token_total = 0
+                for r in self.conn.execute('''SELECT c.usage,r.input_bound,r.output_bound
+                    FROM calls c JOIN resource_reservations r USING(call_id)'''):
+                    usage = json.loads(r['usage'] or '{}')
+                    token_total += (usage['prompt_tokens'] + usage['completion_tokens'] if all(
+                        type(usage.get(k)) is int and usage[k] >= 0 for k in ('prompt_tokens','completion_tokens'))
+                        else r['input_bound'] + r['output_bound'])
+                if token_total + input_bound + output_bound > auth['max_tokens']:
+                    raise BudgetExceeded('免费模型token预算已到；未知用量保留预留')
+            elif spent + reserved > auth['cap_microyuan'] or (
+                    phase == 'pilot' and pilot + reserved > auth['pilot_microyuan']):
                 raise BudgetExceeded('费用或单组调用上限已到，停止实验并保留未完成记录')
+            if count >= 16:
+                raise BudgetExceeded('单组调用上限已到')
             call_id = 'call-' + uuid.uuid4().hex
             self.conn.execute('INSERT INTO calls VALUES(?,?,?,?,?,?,?,?,?,?)',
                               (call_id, trial_id, phase, stage, 'reserved', reserved, None, None, None, None))
+            if 'profile' in auth:
+                self.conn.execute('INSERT INTO resource_reservations VALUES(?,?,?)',
+                                  (call_id, input_bound, output_bound))
             self.conn.commit()
             return call_id
         except BaseException:
@@ -240,7 +284,9 @@ class Ledger:
         usage = response.get('usage') or {}
         valid = all(type(usage.get(k)) is int and usage[k] >= 0
                     for k in ('prompt_tokens', 'completion_tokens'))
-        charged = usage['prompt_tokens'] * 2 + usage['completion_tokens'] * 8 if valid else None
+        pricing = self.authorization()['pricing']
+        charged = (usage['prompt_tokens'] * pricing['input_per_million'] +
+                   usage['completion_tokens'] * pricing['output_per_million']) if valid else None
         # Reasoning tokens are already included in completion_tokens, never add twice.
         with self.conn:
             self.conn.execute('''UPDATE calls SET status=?,charged=?,usage=?,actual_model=?,seconds=?
@@ -251,12 +297,22 @@ class Ledger:
             row = self.conn.execute('SELECT reserved FROM calls WHERE call_id=?', (call_id,)).fetchone()
             if charged > row['reserved']:
                 raise BudgetExceeded('供应商报告用量超过预留上界，停止并核查计费')
+            if 'profile' in self.authorization():
+                bounds = self.conn.execute('SELECT * FROM resource_reservations WHERE call_id=?',(call_id,)).fetchone()
+                if usage['prompt_tokens'] > bounds['input_bound'] or usage['completion_tokens'] > bounds['output_bound']:
+                    raise BudgetExceeded('供应商用量超过资源预留上界，停止核查')
 
     def summary(self):
         rows = [dict(r) for r in self.conn.execute('SELECT * FROM calls ORDER BY rowid')]
+        free = bool(self.conn.execute('SELECT 1 FROM authorization').fetchone()) and 'profile' in self.authorization()
         return {'calls': len(rows), 'estimated_peak_cost_yuan': sum(r['charged'] or 0 for r in rows) / 1000000,
                 'reserved_unknown_yuan': sum(r['reserved'] for r in rows if r['charged'] is None) / 1000000,
-                'cost_basis': '高峰价估算；非账户实际扣费，未知用量保守占用预算', 'records': rows}
+                'cost_basis': ('官方限时免费边际token价；不包含Go订阅费用，不是账户账单' if free else
+                               '高峰价估算；非账户实际扣费，未知用量保守占用预算'),
+                'usage_unknown_calls': sum(r['charged'] is None for r in rows),
+                'prompt_tokens': sum(json.loads(r['usage'] or '{}').get('prompt_tokens',0) for r in rows),
+                'completion_tokens': sum(json.loads(r['usage'] or '{}').get('completion_tokens',0) for r in rows),
+                'records': rows}
 
 
 class RecordedModel:
@@ -265,7 +321,13 @@ class RecordedModel:
 
     def __init__(self, profile, ledger, trial, phase, directory, client_factory=None):
         from .provider_adapter import ProfileModel
-        if (profile['base_url'] != 'https://api.deepseek.com' or profile['model_id'] != 'deepseek-flash'
+        auth = ledger.authorization() if ledger.conn.execute('SELECT 1 FROM authorization').fetchone() else {}
+        go = auth.get('profile')
+        if go:
+            from .opencode_go import profile as go_profile
+            if profile != go or go != go_profile(go['model_id'], go['output_limit']):
+                raise ValueError('免费模型与明确授权配置不同')
+        elif (profile['base_url'] != 'https://api.deepseek.com' or profile['model_id'] != 'deepseek-flash'
                 or profile['protocol'] != 'openai_chat' or profile['budget_scope'] != 'combined'
                 or profile['reasoning_effort'] != 'high' or profile['output_limit'] != 8192):
             raise ValueError('当前费用上界只批准官方Flash文本接口、high与8192输出；其他接口需重新定价授权')
@@ -275,6 +337,7 @@ class RecordedModel:
         self.model = 'profile/' + profile['id']
         self.transport = profile['protocol']
         self.stopped = False
+        self.last_failure = None
         self.client = (client_factory or ProfileModel)(profile, final_observer=self.observe)
 
     def observe(self, content, metadata):
@@ -302,6 +365,7 @@ class RecordedModel:
         started = time.monotonic()
         response = {}
         status = 'failed'
+        failure = None
         try:
             response = self.client.run_task(stage, packet, schema, system, timeout_seconds=timeout_seconds)
             status = 'returned'
@@ -309,10 +373,16 @@ class RecordedModel:
         except StructuredDeliveryError as error:
             response, status = error.response, 'invalid_final'
             raise
+        except Exception as error:
+            from L4_intelligence.intelligence.llm import LLMUnavailable
+            code=re.match(r'^HTTP ([0-9]{3}):',str(error)) if isinstance(error,LLMUnavailable) else None
+            failure={'type':type(error).__name__,'category':'http_'+code[1] if code else 'request_or_delivery_failure'}
+            self.last_failure=failure
+            raise
         finally:
             elapsed = round(time.monotonic() - started, 3)
             write_new(self.directory / (call_id + '.delivery.json'),
-                      {'status': status, 'response': response, 'seconds': elapsed})
+                      {'status': status, 'response': response, 'seconds': elapsed,'failure':failure})
             self.ledger.settle(call_id, response, elapsed, status)
             if not all(type((response.get('usage') or {}).get(k)) is int and response['usage'][k] >= 0
                        for k in ('prompt_tokens', 'completion_tokens')):
@@ -321,7 +391,9 @@ class RecordedModel:
             if actual:
                 models = {r[0] for r in self.ledger.conn.execute(
                     'SELECT DISTINCT actual_model FROM calls WHERE actual_model IS NOT NULL')}
-                if len(models) > 1 or actual.lower() not in ('deepseek-flash', 'deepseek-v4.1-flash'):
+                approved = (self.profile['model_id'],) if 'profile' in self.ledger.authorization() else (
+                    'deepseek-flash', 'deepseek-v4.1-flash')
+                if len(models) > 1 or actual.lower() not in approved:
                     self.stopped = True
                     raise BudgetExceeded('实际模型版本变化，停止跨版本混合实验')
 
@@ -497,7 +569,10 @@ def run_phase(root, phase):
     ledger = Ledger(root)
     try:
         auth = ledger.authorization()
-        profile = next(copy.deepcopy(p) for p in PRESETS if p['id'] == 'deepseek')
+        if manifest.get('authorization_hash') and manifest['authorization_hash'] != digest(auth):
+            raise ValueError('冻结后模型或预算授权发生变化')
+        profile = copy.deepcopy(auth.get('profile')) if auth.get('profile') else next(
+            copy.deepcopy(p) for p in PRESETS if p['id'] == 'deepseek')
         profile.update(reasoning_effort=auth['reasoning_effort'], output_limit=auth['output_limit'])
         cases = {c['case_id']: c for c in manifest['cases']}
         for trial in manifest['trials']:
@@ -528,7 +603,9 @@ def run_phase(root, phase):
                         report = baseline(store, run_id, model, arm, seed, tid)
                         status = 'returned'
             except Exception as error:
-                outcome = {'error_type': type(error).__name__}
+                outcome = {'error_type': type(error).__name__, 'failure':getattr(model,'last_failure',None),
+                           'trace':[{'file':Path(f.filename).name,'line':f.lineno,'function':f.name}
+                                    for f in traceback.extract_tb(error.__traceback__)[-5:]]}
                 if model and model.stopped:
                     status = 'budget_stopped'
             finally:
@@ -688,6 +765,10 @@ def main(argv=None):
     p.add_argument('--cap-yuan', type=float, required=True)
     p.add_argument('--pilot-yuan', type=float, default=2)
     p.add_argument('--note', required=True)
+    p = sub.add_parser('authorize-go')
+    from .opencode_go import MODELS
+    p.add_argument('--model', choices=MODELS, required=True)
+    p.add_argument('--note', required=True)
     for command in ('run', 'review', 'summary'):
         p = sub.add_parser(command)
         p.add_argument('--phase', choices=('pilot', 'formal'), default='formal')
@@ -705,6 +786,12 @@ def main(argv=None):
         ledger = Ledger(root)
         try:
             result = ledger.authorize(args.cap_yuan, args.pilot_yuan, args.note)
+        finally:
+            ledger.close()
+    elif args.command == 'authorize-go':
+        ledger = Ledger(root)
+        try:
+            result = ledger.authorize_go(args.model, args.note)
         finally:
             ledger.close()
     elif args.command == 'run':

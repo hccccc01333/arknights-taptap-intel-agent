@@ -39,7 +39,14 @@ output_assessments 分别简述为什么保存/不保存游戏情报和素材，
 prerequisites 只列这个方案实际依赖的条件：自摄、原创、零奖励方案不依赖原视频授权或奖池；使用原视频才核查授权，涉及奖励才确认预算。未确认入口可以列为上线前条件，不虚构现成功能。切口牵强或证据不足仍用 watch/archive。'''
 
 
-def task(store, run_id, model, stage, packet, schema, system, timeout_seconds=180):
+class SemanticDeliveryError(ValueError):
+    """A controlled rule/path, never an echoed model value or source body."""
+    def __init__(self, path, rule):
+        self.safe_feedback = '证据约束未通过：' + path + '；' + rule
+        super().__init__(self.safe_feedback)
+
+
+def task(store, run_id, model, stage, packet, schema, system, timeout_seconds=180, *, validate=None):
     """Shared bounded model call; final JSON only, no private reasoning persisted."""
     started=time.monotonic();usage={}
     for attempt in range(2):
@@ -56,14 +63,20 @@ def task(store, run_id, model, stage, packet, schema, system, timeout_seconds=18
         try:
             if invalid:raise invalid
             Draft202012Validator(schema).validate(response['result'])
+            if validate is not None:validate(response['result'])
             return response['result'],usage
         except (ValueError,ValidationError) as error:
             # Diagnostic paths, not echoed source values or model reasoning.
             path='/'.join(map(str,getattr(error,'path',[])))
-            message='结构化交付未通过校验'+('：'+path if path else '')
+            message=error.safe_feedback if isinstance(error,SemanticDeliveryError) else '结构化交付未通过校验'+('：'+path if path else '')
+            from .contracts import safe_schema_errors
+            errors=safe_schema_errors(response.get('schema_errors'))
+            if errors:message+='；'+ '；'.join(e['path']+' / '+e['constraint'] for e in errors)
             store.step(run_id,'validation_error',{'name':stage,'error':message})
             packet['validation_errors']=[message]
-            if attempt:raise ValueError(message) from None
+            if attempt:
+                if isinstance(error,SemanticDeliveryError):raise error from None
+                raise ValueError(message) from None
 
 
 def plan(store,run_id,model,topic_id=None,*,screen_limit=18,screen_only=False):

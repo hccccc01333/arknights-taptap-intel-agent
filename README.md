@@ -2,7 +2,7 @@
 
 **持续追踪全网热点，自动研究与积累游戏情报、可用素材，从中识别并产出 TapTap 增长创意的 AI Agent 系统。**
 
-[![版本](https://img.shields.io/badge/version-3.0.0--alpha.19-087f8c)](docs/版本记录.md)
+[![版本](https://img.shields.io/badge/version-3.0.0--alpha.20-087f8c)](docs/版本记录.md)
 [![CI](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml)
 [![网站部署](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml)
 
@@ -16,11 +16,17 @@
 
 初次了解项目，可以先看[交付内容](#系统交付什么)和[Agent 分工](#agent-如何工作)；想了解实现，可以继续看[技术栈](#实际技术栈)、[V3 数据链路](#v3-的数据如何变成成果)、[GraphRAG 的实现](#graphrag-思想在-v3-中怎么落地)和[LangGraph 的使用范围](#langgraph-在项目中怎么用)。启动步骤见[本地运行](#本地运行)。
 
+## Alpha20：Go免费模型与真实校准
+
+使用系统变量 `OPENCODE_GO_API_KEY` 接入 OpenCode Go 的 `step-5-preview-free` 和 `longcat-2.5-preview-free`。两款已通过真实最终JSON响应检查，已在独立目录完成LongCat两例校准，并开始固定10例的A/B/C正式运行；正式事实核验尚未完成。Step固定high，LongCat关闭独立思考以保留结构化输出预算；各模型分开比较，不混合结果，也不切换付费型号。
+
+Go接入采用流式响应，逐帧丢弃思考内容，只拼接最终`content`；有完整结束标记后再做本地契约校验。免费实验继续限制调用和token，记录失败、未知用量、耗时与工具来源；零边际token价格不包含Go订阅费，官方免费供给为限时安排。473项工程回归通过，**当前没有完整系统优于普通LLM的结论**。配置见[供应商文档](docs/V3-模型供应商与自定义配置.md)，实验方法见[对照实验](docs/V3-可复现对照实验.md)。
+
 ## Alpha19：验证架构是否值得
 
 新增独立的可复现实验工具，以普通LLM、同模型加搜索、真实完整Agent链路进行对照，核查事实、日期、引用、风险拒绝、必要信息覆盖和成本。实验预先冻结样本及核验基准，保留无效输出和失败，不使用运营人员或另一个模型的创意评分代替事实证据。
 
-461项工程回归通过，真实付费对照仍等待额度授权；目前**没有架构优于基线的实验结论**。这批更新不增加生产Agent或人工启动按钮，也不修改后台的额度暂停。方法、预算和运行命令见[可复现对照实验](docs/V3-可复现对照实验.md)。
+Alpha19发布时461项工程回归通过，真实付费对照当时等待额度授权；该版**没有架构优于基线的实验结论**。这批更新不增加生产Agent或人工启动按钮，也不修改后台的额度暂停。方法、预算和运行命令见[可复现对照实验](docs/V3-可复现对照实验.md)。
 
 ## Alpha18 更新
 

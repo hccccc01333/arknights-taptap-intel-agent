@@ -1,6 +1,7 @@
 """Provider-neutral role, evidence and structured-delivery contracts."""
 import copy
 import json
+import re
 import time
 from dataclasses import dataclass
 
@@ -14,7 +15,16 @@ ROLES = {'readiness':'system', 'main_plan':'business_main', 'intelligence':'busi
          'research_plan':'research_child','interpretation':'research_child','event_relation':'research_child','community_summary':'research_child'}
 SAFE_METADATA = ('model','api_model','usage','seconds','transport','session_id','request_id',
     'reported_cost','cost_status','reasoning_effort','output_limit','finish_reason','reasoning_present','input_file','task_id',
-    'provider_id','profile_version')
+    'provider_id','profile_version','schema_errors')
+
+
+def safe_schema_errors(items):
+    rules={'additionalProperties','maxItems','minItems','type','enum','required','pattern',
+           'maxLength','minLength','maximum','minimum','uniqueItems','const','oneOf','anyOf'}
+    if not isinstance(items,list):return []
+    return [{'path':item['path'],'constraint':item['constraint']} for item in items[:5]
+            if isinstance(item,dict) and isinstance(item.get('path'),str) and
+            re.fullmatch(r'[A-Za-z0-9_/-]{1,200}',item['path']) and item.get('constraint') in rules]
 
 
 @dataclass(frozen=True)
@@ -92,6 +102,7 @@ def run_task(model,stage,packet,schema,system,*,timeout_seconds=180):
     if not isinstance(response,dict):
         raise StructuredDeliveryError('模型适配器未返回交付对象',{'result':None,**contract.metadata()})
     output={k:copy.deepcopy(response[k]) for k in SAFE_METADATA if k in response}
+    if 'schema_errors' in output:output['schema_errors']=safe_schema_errors(output['schema_errors'])
     output.update(contract.metadata())
     output.setdefault('model',getattr(model,'model','unknown'))
     output.setdefault('transport',getattr(model,'transport','unknown'))
