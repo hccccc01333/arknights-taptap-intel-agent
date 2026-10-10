@@ -218,12 +218,12 @@ class Ledger:
             raise BudgetExceeded('尚未记录实验模型和资源预算授权')
         return json.loads(row[0])
 
-    def authorize_go(self, model, note, *, max_calls=220, pilot_calls=40, max_tokens=4000000):
+    def authorize_go(self, model, note, *, max_calls=220, pilot_calls=40, max_tokens=4000000, reasoning_effort=None):
         from .opencode_go import profile, PRICING as go_pricing
         if (not note or type(max_calls) is not int or not 1 <= pilot_calls <= max_calls <= 220
                 or type(pilot_calls) is not int or type(max_tokens) is not int or not 1 <= max_tokens <= 4000000):
             raise ValueError('免费模型也需要有限的请求、token与校准预算')
-        p = profile(model)
+        p = profile(model,reasoning_effort=reasoning_effort)
         value = {'at': now_iso(), 'note': note, 'pricing': go_pricing,
                  'profile': p, 'model': model, 'reasoning_effort': p['reasoning_effort'],
                  'output_limit': p['output_limit'], 'max_calls': max_calls,
@@ -325,7 +325,7 @@ class RecordedModel:
         go = auth.get('profile')
         if go:
             from .opencode_go import profile as go_profile
-            if profile != go or go != go_profile(go['model_id'], go['output_limit']):
+            if profile != go or go != go_profile(go['model_id'], go['output_limit'],go['reasoning_effort']):
                 raise ValueError('免费模型与明确授权配置不同')
         elif (profile['base_url'] != 'https://api.deepseek.com' or profile['model_id'] != 'deepseek-flash'
                 or profile['protocol'] != 'openai_chat' or profile['budget_scope'] != 'combined'
@@ -768,6 +768,7 @@ def main(argv=None):
     p = sub.add_parser('authorize-go')
     from .opencode_go import MODELS
     p.add_argument('--model', choices=MODELS, required=True)
+    p.add_argument('--reasoning-effort', choices=('low','medium','high','none'))
     p.add_argument('--note', required=True)
     for command in ('run', 'review', 'summary'):
         p = sub.add_parser(command)
@@ -791,7 +792,7 @@ def main(argv=None):
     elif args.command == 'authorize-go':
         ledger = Ledger(root)
         try:
-            result = ledger.authorize_go(args.model, args.note)
+            result = ledger.authorize_go(args.model, args.note,reasoning_effort=args.reasoning_effort)
         finally:
             ledger.close()
     elif args.command == 'run':

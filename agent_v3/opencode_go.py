@@ -15,14 +15,17 @@ PRICING = {'currency': 'CNY', 'input_per_million': 0, 'output_per_million': 0,
            'basis': 'limited_time_free_marginal_tokens_subscription_excluded'}
 
 
-def profile(model, output_limit=8192):
+def profile(model, output_limit=8192, reasoning_effort=None):
     if model not in MODELS:
         raise ValueError('只授权 Step 5 / LongCat 2.5 Preview Free；不能切换付费模型')
+    effort=reasoning_effort or ('high' if model==MODELS[0] else 'none')
+    if effort not in (('low','medium','high') if model==MODELS[0] else ('none',)):
+        raise ValueError('Step支持low/medium/high；LongCat本实验只允许关闭独立思考')
     return validate(preset(
         'go-step5' if model == MODELS[0] else 'go-longcat',
         'OpenCode Go / ' + model, BASE_URL, model, 'OPENCODE_GO_API_KEY',
         reasoning='reasoning_effort' if model == MODELS[0] else 'thinking',
-        effort='high' if model == MODELS[0] else 'none', output_limit=output_limit))
+        effort=effort, output_limit=output_limit))
 
 
 def headers(session):

@@ -48,6 +48,20 @@ class GoTests(unittest.TestCase):
         self.assertEqual(request_body(cat,'baseline',{},SCHEMA,'fixture')[0]['thinking'],{'type':'disabled'})
         with self.assertRaises(ValueError): profile('paid-model')
 
+    def test_step_supported_strengths_are_frozen_and_not_transferred_to_longcat(self):
+        for effort in ('low','medium','high'):
+            p=profile(MODELS[0],reasoning_effort=effort)
+            self.assertEqual(request_body(p,'baseline',{},SCHEMA,'fixture')[0]['reasoning_effort'],effort)
+        for effort in ('none','max'):
+            with self.assertRaises(ValueError):profile(MODELS[0],reasoning_effort=effort)
+        with self.assertRaises(ValueError):profile(MODELS[1],reasoning_effort='medium')
+        auth=self.ledger.authorize_go(MODELS[0],'medium calibrated separately',reasoning_effort='medium')
+        p=auth['profile'];raw=reply(p)
+        with patch('agent_v3.providers.credential',return_value='fixture'),patch('requests.post',return_value=response(raw)):
+            b.RecordedModel(p,self.ledger,'test-A','pilot',self.root/'outputs').run_task('baseline',{},SCHEMA,'fixture')
+        changed=copy.deepcopy(p);changed['reasoning_effort']='high'
+        with self.assertRaises(ValueError):b.RecordedModel(changed,self.ledger,'test-B','pilot',self.root)
+
     def test_own_stable_session_and_user_agent_without_key_in_artifacts(self):
         p=profile(MODELS[0]); raw=reply(p)
         raw['choices'][0]['message']={'content':'{"ready":true}', 'reasoning':PRIVATE,
