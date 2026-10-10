@@ -120,8 +120,11 @@ class ProfileModel:
     supports_tasks = True
     compact_tasks = True
 
-    def __init__(self, profile):
+    def __init__(self, profile, *, final_observer=None):
         self.profile = providers.validate(profile)
+        # Explicit experiment observer receives final text and safe metadata only.
+        # Production clients have no observer; private reasoning never enters it.
+        self.final_observer = final_observer
         self.model = 'profile/' + profile['id']
         self.transport = self.profile['protocol']
         self.last_session = None
@@ -193,6 +196,8 @@ class ProfileModel:
                   'finish_reason': parts['finish_reason'], 'reported_cost': cost,
                   'cost_status': 'reported' if cost is not None else 'provider_billed_not_reported',
                   'provider_id': p['id'], 'profile_version': providers.fingerprint(p)}
+        if self.final_observer is not None:
+            self.final_observer(parts['content'], {k: v for k, v in output.items() if k != 'result'})
         try:
             if anthropic:
                 if parts['finish_reason'] != 'end_turn' or parts['unexpected_tool']:

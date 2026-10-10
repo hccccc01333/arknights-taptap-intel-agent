@@ -2,7 +2,7 @@
 
 **持续追踪全网热点，自动研究与积累游戏情报、可用素材，从中识别并产出 TapTap 增长创意的 AI Agent 系统。**
 
-[![版本](https://img.shields.io/badge/version-3.0.0--alpha.18-087f8c)](docs/版本记录.md)
+[![版本](https://img.shields.io/badge/version-3.0.0--alpha.19-087f8c)](docs/版本记录.md)
 [![CI](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/ci.yml)
 [![网站部署](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml/badge.svg)](https://github.com/hccccc01333/taptap-hotspot-intel/actions/workflows/pages.yml)
 
@@ -15,6 +15,12 @@
 <sub>2026-10-08 线上真实成果页。截图中的数量属于当时的运行快照，以网站最近同步时间为准。</sub>
 
 初次了解项目，可以先看[交付内容](#系统交付什么)和[Agent 分工](#agent-如何工作)；想了解实现，可以继续看[技术栈](#实际技术栈)、[V3 数据链路](#v3-的数据如何变成成果)、[GraphRAG 的实现](#graphrag-思想在-v3-中怎么落地)和[LangGraph 的使用范围](#langgraph-在项目中怎么用)。启动步骤见[本地运行](#本地运行)。
+
+## Alpha19：验证架构是否值得
+
+新增独立的可复现实验工具，以普通LLM、同模型加搜索、真实完整Agent链路进行对照，核查事实、日期、引用、风险拒绝、必要信息覆盖和成本。实验预先冻结样本及核验基准，保留无效输出和失败，不使用运营人员或另一个模型的创意评分代替事实证据。
+
+461项工程回归通过，真实付费对照仍等待额度授权；目前**没有架构优于基线的实验结论**。这批更新不增加生产Agent或人工启动按钮，也不修改后台的额度暂停。方法、预算和运行命令见[可复现对照实验](docs/V3-可复现对照实验.md)。
 
 ## Alpha18 更新
 
@@ -420,6 +426,8 @@ npm run dev -- --host 127.0.0.1 --port 5182 --strictPort
 
 ## 当前验证与边界
 
+Alpha19 加入独立的普通LLM / LLM＋搜索 / 完整Agent对照实验工具：同一初始线索、同一官方Flash配置，复用真实生产链路，预先冻结10例与核验基准，保存失败的最终回答、来源快照和费用记录。后台暂停保留，实验单独授权预算；公开网站仍是五个自动成果入口。当前已只读准备240条真实候选，**付费对照尚未执行，尚无优于普通LLM或搜索的实验结论**。方案、核验标准、费用限制与复现命令见[可复现对照实验](docs/V3-可复现对照实验.md)。
+
 截至2026-10-09，V3 Alpha18 已通过444项后端回归，包含20项新增供应商测试及此前26项图谱与自动恢复测试；TypeScript 检查、前端生产构建、桌面／390px移动端浏览和独立备份恢复通过。已有真实采集、研究、游戏情报、可编辑素材和增长创意记录，版本和失败可追溯。
 
 | 验证层次 | 已确认的结果 | 结论范围 |
@@ -464,6 +472,7 @@ npm run build
 | `docs/` | 设计、实测、部署与版本记录 |
 
 - [模型供应商与自定义配置](docs/V3-模型供应商与自定义配置.md)
+- [可复现对照实验：LLM、搜索与完整Agent](docs/V3-可复现对照实验.md)
 - [实体事件图谱与 GraphRAG 检索](docs/V3-实体事件图谱与GraphRAG检索.md)
 - [自动执行可靠性与统一契约](docs/V3-自动执行可靠性与统一契约.md)
 - [自动交付与补查闭环](docs/V3-自动交付与补查闭环.md)
