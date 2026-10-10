@@ -155,7 +155,7 @@ def validate_knowledge(store,topic_id,value):
 
 
 def ingest_interpretation(store,topic_id,fingerprint,value,run_id=None):
-    """Reuse grounded AI interpretation; optional extraction adds no model call."""
+    """Index validated interpretation claims and independently validated extraction."""
     mapped=validate_knowledge(store,topic_id,value)
     for section in ('core','controversies'):
         for claim in value.get(section,[]):

@@ -164,10 +164,10 @@ class GoTests(unittest.TestCase):
 
 
 class GroundingRetryTests(unittest.TestCase):
-    def test_invalid_entity_is_repaired_before_any_business_write(self):
+    def test_invalid_entity_is_repaired_without_regenerating_interpretation(self):
         self.exercise(repair=True)
 
-    def test_repeated_invalid_entity_fails_closed_without_partial_writes(self):
+    def test_repeated_invalid_entity_excludes_graph_and_preserves_interpretation(self):
         self.exercise(repair=False)
 
     def exercise(self,repair):
@@ -179,10 +179,12 @@ class GroundingRetryTests(unittest.TestCase):
         try:
             model=fixture.model();original=model.run_task;packets=[]
             def run(stage,packet,schema,system,**kwargs):
-                self.assertEqual(fixture.store.conn.execute('SELECT COUNT(*) FROM topic_interpretation').fetchone()[0],0)
-                packets.append(copy.deepcopy(packet));result=original(stage,packet,schema,system,**kwargs)
+                result=original(stage,packet,schema,system,**kwargs)
+                if stage!='graph_extraction':return result
+                self.assertEqual(fixture.store.conn.execute('SELECT COUNT(*) FROM topic_interpretation').fetchone()[0],1)
+                packets.append(copy.deepcopy(packet))
                 if not repair or len(packets)==1:
-                    result['result']['knowledge']['entities']=[{'surface':'完全没有出现的实体','canonical_name':'完全没有出现的实体',
+                    result['result']['entities']=[{'surface':'完全没有出现的实体','canonical_name':'完全没有出现的实体',
                                                               'kind':'GAME','basis_refs':[1]}]
                 return result
             model.run_task=run
@@ -190,8 +192,9 @@ class GroundingRetryTests(unittest.TestCase):
                 saved=interpret(fixture.store,fixture.rid,model,fixture.tid)
                 self.assertTrue(saved);self.assertEqual(saved['payload']['knowledge']['entities'],[])
             else:
-                with self.assertRaises(SemanticDeliveryError):interpret(fixture.store,fixture.rid,model,fixture.tid)
-                self.assertIsNone(fixture.store.interpretation(fixture.tid,read_topic(fixture.store,fixture.tid)['fingerprint']))
+                saved=interpret(fixture.store,fixture.rid,model,fixture.tid)
+                self.assertEqual(saved['payload']['graph_extraction']['status'],'deferred')
+                self.assertNotIn('knowledge',saved['payload'])
             self.assertEqual(len(packets),2)
             feedback=packets[1]['validation_errors'][0]
             self.assertIn('knowledge/entities/0/basis_refs',feedback)

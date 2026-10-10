@@ -226,15 +226,15 @@ class BenchmarkTests(unittest.TestCase):
             with patch('agent_v3.research.search_news', side_effect=AssertionError('offline fixture')):
                 output = process(fixture.store, fixture.rid, topic_id=fixture.tid, model=model)
             self.assertEqual(output['status'], 'completed')
-            self.assertEqual(native.calls, ['main_plan', 'research_plan', 'interpretation', 'intelligence', 'creative_plan', 'creative_production'])
+            self.assertEqual(native.calls, ['main_plan', 'research_plan', 'interpretation', 'graph_extraction', 'intelligence', 'creative_plan', 'creative_production'])
             report = b.project_full(fixture.store, fixture.tid, output)
             self.assertEqual(report['decision'], 'create')
             self.assertTrue(report['creative'])
             self.assertIn('0–3秒', report['creative'])
             self.assertIn('{{TapTap承接链接}}', report['creative'])
             self.assertTrue(any('地图我来选' in m for m in report['materials']))
-            self.assertEqual(self.ledger.summary()['calls'], 6)
-            self.assertEqual(len(list((self.root / 'outputs').glob('*.final.json'))), 6)
+            self.assertEqual(self.ledger.summary()['calls'], 7)
+            self.assertEqual(len(list((self.root / 'outputs').glob('*.final.json'))), 7)
         finally:
             fixture.tearDown()
 
@@ -280,13 +280,13 @@ class BenchmarkTests(unittest.TestCase):
                     'agent_v3.tool_executor.ToolExecutor.execute', return_value={'calls': 0, 'status': 'fixture'}), redirect_stdout(io.StringIO()):
                 result = b.run_phase(self.root, 'pilot')
                 post.assert_not_called()
-            self.assertEqual(result['calls'], 16)
+            self.assertEqual(result['calls'], 18)
             outputs = list((self.root / 'pilot').glob('*/result.json'))
             self.assertEqual(len(outputs), 6)
             self.assertTrue(all(b.read(p)['status'] == 'returned' for p in outputs))
             paths = b.review_export(self.root, 'pilot')
             summary = b.summarize(self.root, paths['review'], paths['mapping'], 'pilot')
-            self.assertEqual(summary['groups']['C']['model_calls'], 12)
+            self.assertEqual(summary['groups']['C']['model_calls'], 14)
             self.assertEqual(summary['groups']['A']['metrics']['facts']['pass'], 0)
         finally:
             fixture.tearDown()

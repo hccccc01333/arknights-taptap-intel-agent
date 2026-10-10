@@ -48,9 +48,9 @@ class MainAgentTests(unittest.TestCase):
                         'views':[{'text':'玩家喜欢这种玩法','kind':'actual_comment','basis_refs':[1]}] if self.bad_view else [],
                         'controversies':[],'unknowns':['没有取得评论样本，不能推断总体需求'],'discussion_review':[],
                         'risk_assessment':{'polarity':'positive','level':'low','reason':'夹具为正常玩法分享，没有负面争议依据','basis_refs':[1]},
-                        'recency':{'kind':'unknown','date_iso':'','time_text':'','basis_refs':[],'reason':'测试仅提供近期来源日期'},'source_matches':[],
-                        'knowledge':{'entities':[],'relations':[],'needs':[]}}
+                        'recency':{'kind':'unknown','date_iso':'','time_text':'','basis_refs':[],'reason':'测试仅提供近期来源日期'},'source_matches':[]}
                     if getattr(self,'bad_date',False):value['recency']={'kind':'recent_event','date_iso':'2099-10-08','time_text':'2099年10月8日','basis_refs':[1],'reason':'模型不可靠日期测试'}
+                elif stage=='graph_extraction':value={'entities':[],'relations':[],'needs':[]}
                 elif stage=='intelligence':
                     value={'summary':'玩法表达可转成邀请朋友一起参与的游戏内容，效果待验证。','fact_refs':[1],
                         'emotions':[],'needs':[],'spread_mechanics':[],'content_forms':['玩法介绍'],
@@ -91,8 +91,8 @@ class MainAgentTests(unittest.TestCase):
         with patch('agent_v3.research.search_news',side_effect=AssertionError('fixture must not use network')):
             result=process(self.store,self.rid,model=model,topic_id=self.tid)
         self.assertEqual(result['status'],'completed')
-        self.assertEqual(model.calls,['main_plan','research_plan','interpretation','intelligence','creative_plan','creative_production'])
-        self.assertEqual(result['usage']['total_tokens'],60)
+        self.assertEqual(model.calls,['main_plan','research_plan','interpretation','graph_extraction','intelligence','creative_plan','creative_production'])
+        self.assertEqual(result['usage']['total_tokens'],70)
         self.assertEqual(len(self.store.game_signals()),1);self.assertEqual(len(self.store.hotspot_feed()),1)
         self.assertEqual(len(self.store.usable_materials()),3)
         self.assertEqual(self.store.interpretation(self.tid,read_topic(self.store,self.tid)['fingerprint'])['payload']['agent_role'],'research_child')
@@ -111,7 +111,7 @@ class MainAgentTests(unittest.TestCase):
     def test_decision_and_interpretation_cache_prevents_duplicate_calls(self):
         model=self.model();plan(self.store,self.rid,model,self.tid);plan(self.store,self.rid,model,self.tid)
         interpret(self.store,self.rid,model,self.tid);interpret(self.store,self.rid,model,self.tid)
-        self.assertEqual(model.calls,['main_plan','interpretation'])
+        self.assertEqual(model.calls,['main_plan','interpretation','graph_extraction'])
 
     def test_changed_source_does_not_display_old_interpretation(self):
         interpret(self.store,self.rid,self.model(),self.tid)

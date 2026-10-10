@@ -124,10 +124,12 @@ class Delivery21Tests(unittest.TestCase):
     def test_no_followups_or_pending_relations_means_no_placeholder_fields(self):
         f=self.fixture();p=topic_packet(read_topic(f.store,f.tid),f.store.context());p['mission']={}
         s=schema(p)
-        self.assertNotIn('followup_answers',s['properties']);self.assertNotIn('relation_reviews',s['properties']['knowledge']['properties'])
+        from agent_v3.graph_ai import extraction_schema
+        self.assertNotIn('followup_answers',s['properties']);self.assertNotIn('knowledge',s['properties'])
+        self.assertNotIn('relation_reviews',extraction_schema(p)['properties'])
         p['mission']={'followup_ids':['followup_fixture']}
         p['graph_context']={'pending_relations':[{'relation_id':'relation_fixture','status':'proposed'}]}
-        s=schema(p);self.assertIn('followup_answers',s['properties']);self.assertIn('relation_reviews',s['properties']['knowledge']['properties'])
+        s=schema(p);self.assertIn('followup_answers',s['properties']);self.assertIn('relation_reviews',extraction_schema(p)['properties'])
 
     def test_missing_field_feedback_names_trusted_paths_not_model_values(self):
         s=object_schema({'knowledge':object_schema({'entities':{'type':'array'},'relations':{'type':'array'}})})

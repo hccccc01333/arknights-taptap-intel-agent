@@ -235,10 +235,11 @@ class SharedContractTests(unittest.TestCase):
         from agent_v3.task_packets import topic_packet
         from agent_v3.main_agent import business_schema
         from agent_v3.research_child import schema as research_schema
+        from agent_v3.graph_ai import extraction_schema
         fixture=fixtures.MainAgentTests();fixture.setUp()
         try:
             packet=topic_packet(read_topic(fixture.store,fixture.tid),fixture.store.context());fingerprints=[]
-            for stage,schema in (('intelligence',business_schema(packet)),('interpretation',research_schema(packet))):
+            for stage,schema in (('intelligence',business_schema(packet)),('interpretation',research_schema(packet)),('graph_extraction',extraction_schema(packet))):
                 good=fixture.model().run_task(stage,packet,schema,'fixture')['result']
                 for item in providers.PRESETS:
                     p=profile(item['id'])
@@ -249,10 +250,11 @@ class SharedContractTests(unittest.TestCase):
                         fingerprints.append((stage,result['input_fingerprint']))
                     bad=copy.deepcopy(good)
                     if stage=='intelligence':bad['fact_refs']=[999]
-                    else:bad['core'][0]['basis_refs']=[999]
+                    elif stage=='interpretation':bad['core'][0]['basis_refs']=[999]
+                    else:bad['entities']=[{'surface':'玩家','canonical_name':'玩家','kind':'CREATOR','basis_refs':[999]}]
                     with self.subTest(bad_ref=p['id'],stage=stage),patch('agent_v3.providers.credential',return_value='test'),patch('requests.post',return_value=response(reply(p,bad))),self.assertRaises(StructuredDeliveryError):
                         run_task(ProfileModel(p),stage,packet,schema,'fixture')
-            for stage in ('intelligence','interpretation'):self.assertEqual(len({fp for st,fp in fingerprints if st==stage}),1)
+            for stage in ('intelligence','interpretation','graph_extraction'):self.assertEqual(len({fp for st,fp in fingerprints if st==stage}),1)
         finally:fixture.tearDown()
 
     def test_settings_api_is_role_protected_and_saving_is_not_activation(self):

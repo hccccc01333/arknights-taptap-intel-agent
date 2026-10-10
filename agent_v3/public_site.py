@@ -83,6 +83,8 @@ def interpretation(value):
     result['payload']=quotes(project(value.get('payload',{}),
         'status headline one_line background core timeline views controversies unknowns heat_evidence '
         'freshness_assessment risk_assessment discussion_review'))
+    state=value.get('payload',{}).get('graph_extraction')
+    if state:result['payload']['graph_extraction']=project(state,'status rounds')
     from .connectors import CHANNELS
     domains={c['id']:c.get('domains',[c['domain']]) for c in CHANNELS}
     for entry in result['payload'].get('heat_evidence',[]):

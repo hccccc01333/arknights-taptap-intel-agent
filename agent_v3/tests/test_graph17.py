@@ -221,7 +221,7 @@ class GraphTests(unittest.TestCase):
             def run(stage,packet,schema,system,**kwargs):
                 packets.append((stage,copy.deepcopy(packet)))
                 result=original(stage,packet,schema,system,**kwargs)
-                if stage=='interpretation':result['result']['knowledge']={'entities':[],'relations':[],'needs':[]}
+                if stage=='graph_extraction':result['result']={'entities':[],'relations':[],'needs':[]}
                 return result
             model.run_task=run
             from agent_v3.pipeline import process
@@ -231,14 +231,14 @@ class GraphTests(unittest.TestCase):
             self.assertEqual(AgentContract.create('community_summary',{}, {'type':'object'}).role,'research_child')
         finally:fixture.tearDown()
 
-    def test_child_cannot_silently_omit_graph_extraction(self):
+    def test_independent_child_extraction_requires_explicit_arrays(self):
         fixture=main_fixtures.MainAgentTests();fixture.setUp()
         try:
-            from agent_v3.research_child import schema
+            from agent_v3.graph_ai import extraction_schema
             from jsonschema import ValidationError
-            packet=topic_packet(read_topic(fixture.store,fixture.tid),fixture.store.context());contract_schema=schema(packet)
-            value=fixture.model().run_task('interpretation',packet,contract_schema,'fixture')['result'];value.pop('knowledge')
-            self.assertRaises(ValidationError,AgentContract.create('interpretation',packet,contract_schema).validate,value,packet)
+            packet=topic_packet(read_topic(fixture.store,fixture.tid),fixture.store.context());contract_schema=extraction_schema(packet)
+            value=fixture.model().run_task('graph_extraction',packet,contract_schema,'fixture')['result'];value.pop('needs')
+            self.assertRaises(ValidationError,AgentContract.create('graph_extraction',packet,contract_schema).validate,value,packet)
         finally:fixture.tearDown()
 
     def test_transient_db_lock_does_not_kill_scheduler(self):

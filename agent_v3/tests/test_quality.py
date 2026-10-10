@@ -60,7 +60,7 @@ class QualityTests(unittest.TestCase):
         self.s.conn.execute('INSERT INTO topic_interpretation VALUES(?,?,?,?,?)',(self.tid,fp,self.rid,now_iso(),dump(old)))
         self.s.conn.commit();m=self.f.model()
         research_child.interpret(self.s,self.rid,m,self.tid);research_child.interpret(self.s,self.rid,m,self.tid)
-        self.assertEqual(m.calls,['interpretation'])
+        self.assertEqual(m.calls,['interpretation','graph_extraction'])
         self.assertEqual(json.loads(self.s.conn.execute('SELECT payload FROM interpretation_revision').fetchone()[0]),old)
 
     def comment_model(self,invalid=False):

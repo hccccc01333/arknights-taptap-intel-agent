@@ -37,6 +37,8 @@ def has_automatic_work(store):
     from .followups import due
     from .main_agent import PLAN_VERSION
     if due(store):return True
+    from .graph_ai import due as graph_due
+    if graph_due(store):return True
     return bool(store.conn.execute('''SELECT 1 FROM topic t LEFT JOIN main_decision d ON d.topic_id=t.topic_id
       AND d.fingerprint=t.fingerprint AND d.context_version=? WHERE t.eligible=1 AND t.last_seen_at>=?
       AND (d.topic_id IS NULL OR COALESCE(json_extract(d.payload,'$.decision_version'),'')<>? OR json_extract(d.payload,'$.action') IN ('delegate_research','analyze','watch')
@@ -183,6 +185,8 @@ def execute_cycle(run_id,cycle_id,research,live,topic_id=None,*,model=None,store
                 failure(store,store.model_setting(),error)
         main_decisions=None;selected_topics=None
         if getattr(auxiliary,'supports_main_agent',False):
+            from .graph_ai import repair_due
+            repair_due(store,run_id,auxiliary,limit=1)
             from .main_agent import plan
             main_decisions=plan(store,run_id,auxiliary,topic_id)
             if not topic_id:
