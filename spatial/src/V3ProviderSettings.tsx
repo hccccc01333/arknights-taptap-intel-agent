@@ -5,12 +5,12 @@ const labels:Record<string,string>={default:'模型默认',none:'关闭思考',e
 const modes:Record<string,string>={omit:'不发送推理参数',reasoning_effort:'reasoning_effort（OpenAI / Gemini）',reasoning_object:'reasoning 对象（OpenRouter）',deepseek:'thinking + reasoning_effort（DeepSeek）',thinking:'thinking 开关（Kimi / GLM / 豆包）',enable_thinking:'enable_thinking + thinking_budget（千问 / 硅基流动）',anthropic_effort:'output_config.effort（Claude）'};
 const clean=(p:any,template:any)=>Object.fromEntries(Object.keys(template).map(k=>[k,p[k]??template[k]]));
 
-export function ProviderSettings({data,refresh}:{data:any;refresh:()=>Promise<void>}){
+export function ProviderSettings({refresh}:{refresh:()=>Promise<void>}){
  const [catalog,setCatalog]=useState<any>(null),[form,setForm]=useState<any>(null),[origin,setOrigin]=useState('new:openai');
- const [model,setModel]=useState(data.model.model),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- useEffect(()=>{setModel(data.model.model);},[data.model.model]);
- useEffect(()=>{let live=true;void v3Api.models().then(c=>{if(live){setCatalog(c);setForm({...c.presets[0]});}}).catch(e=>live&&setError(e.message));return()=>{live=false;};},[]);
- const locked=busy||!!data.active_run;
+ const [model,setModel]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ useEffect(()=>{setModel(catalog?.model?.model||'');},[catalog?.model?.model]);
+ useEffect(()=>{let live=true;async function load(first=false){try{const c=await v3Api.models();if(!c.model?.model||!Array.isArray(c.model_options)||!Array.isArray(c.presets))throw new Error('模型配置接口暂不可用，请检查后台版本后重试。');if(live){setCatalog(c);if(first)setForm({...c.presets[0]});}}catch(e){if(live)setError((e as Error).message);}}void load(true);const timer=window.setInterval(()=>void load(),15000);return()=>{live=false;window.clearInterval(timer);};},[]);
+ const locked=busy||!!catalog?.active_run;
  function choose(value:string){
   setOrigin(value);setMessage('');setError('');
   const [kind,id]=value.split(':');
@@ -21,12 +21,13 @@ export function ProviderSettings({data,refresh}:{data:any;refresh:()=>Promise<vo
  function change(key:string,value:any){setForm((p:any)=>({...p,[key]:value}));setMessage('');}
  async function save(){
   setBusy(true);setError('');setMessage('');try{
-   const result=await v3Api.configure('provider',form);setCatalog(await v3Api.models());setOrigin('saved:'+result.id);setForm(clean(result,catalog.presets[0]));await refresh();
-   setMessage(data.model.model===result.model?'已更新当前模型配置，后续自动运行使用新参数。':'已保存配置；选择“切换使用”后才用于自动运行。');
+   const result=await v3Api.configure('provider',form);setCatalog(await v3Api.models());setOrigin('saved:'+result.id);setForm(clean(result,catalog.presets[0]));void refresh().catch(()=>{});
+   setMessage(catalog.model.model===result.model?'已更新当前模型配置，后续自动运行使用新参数。':'已保存配置；选择“切换使用”后才用于自动运行。');
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
- async function activate(){setBusy(true);setError('');setMessage('');try{await v3Api.configure('model',{model});await refresh();setMessage('已切换，主 Agent 和研究子 Agent 共用此配置；已有额度暂停继续生效。');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- const options=data.model_options||[];
+ async function activate(){setBusy(true);setError('');setMessage('');try{await v3Api.configure('model',{model});setCatalog(await v3Api.models());void refresh().catch(()=>{});setMessage('已切换，主 Agent 和研究子 Agent 共用此配置；已有额度暂停继续生效。');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ if(!catalog)return <div className="v3-provider-settings">{error?<p role="alert">{error}</p>:<p role="status">正在读取供应商配置…</p>}</div>;
+ const data=catalog,options=catalog.model_options||[];
  return <div className="v3-provider-settings">
   <p>当前使用：<b>{data.model.label||data.model.model}</b>。{data.model_gate?.status==='deferred'?`AI 等待：${data.model_gate.reason}`:'后台按既有计划自动处理。'}</p>
   {data.active_run&&<p role="status">自动运行正在处理，结束后可保存或切换配置。</p>}
@@ -68,8 +69,8 @@ export function ProviderSettings({data,refresh}:{data:any;refresh:()=>Promise<vo
  </div>;
 }
 
-export default function ProviderDialog({data,refresh,close,returnFocus}:{data:any;refresh:()=>Promise<void>;close:()=>void;returnFocus:HTMLElement|null}){
+export default function ProviderDialog({refresh,close,returnFocus}:{refresh:()=>Promise<void>;close:()=>void;returnFocus:HTMLElement|null}){
  const dialog=useRef<HTMLDialogElement>(null);
  useEffect(()=>{const node=dialog.current;if(node&&!node.open)node.showModal();const previous=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{node?.close();document.body.style.overflow=previous;if(returnFocus?.isConnected)returnFocus.focus();};},[]);
- return <dialog ref={dialog} className="v3-reading-dialog" aria-label="模型设置" onCancel={e=>{e.preventDefault();close();}} onClick={e=>{if(e.target===e.currentTarget)close();}}><div className="v3-reading-sheet"><header><b>模型供应商与自定义接口</b><button className="v2-secondary" autoFocus onClick={close}>关闭模型设置</button></header><div className="v3-reading-body"><ProviderSettings data={data} refresh={refresh}/></div></div></dialog>;
+ return <dialog ref={dialog} className="v3-reading-dialog" aria-label="模型设置" onCancel={e=>{e.preventDefault();close();}} onClick={e=>{if(e.target===e.currentTarget)close();}}><div className="v3-reading-sheet"><header><b>模型供应商与自定义接口</b><button className="v2-secondary" autoFocus onClick={close}>关闭模型设置</button></header><div className="v3-reading-body"><ProviderSettings refresh={refresh}/></div></div></dialog>;
 }

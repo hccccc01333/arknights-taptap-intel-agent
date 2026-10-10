@@ -169,11 +169,13 @@ def status(profile):
 
 
 def listing(store):
+    from .model import model_status, model_options, gate
     saved = profiles(store)
     return {'version': VERSION, 'presets': copy.deepcopy(PRESETS),
             'profiles': [{**status(p), **p} for p in saved.values()],
             'reasoning_modes': {k: list(v) for k, v in REASONING.items()}, 'protocols': list(PROTOCOLS),
-            'selected': store.model_setting()}
+            'selected': store.model_setting(), 'model': model_status(store.model_setting(),store),
+            'model_options': model_options(store), 'model_gate': gate(store), 'active_run': store.active_owner()}
 
 
 def save(store, value):

@@ -266,7 +266,10 @@ class SharedContractTests(unittest.TestCase):
             with TestClient(app) as client,patch('agent_v3.store.Store',return_value=s),patch('agent_v3.service.Store',return_value=s),patch.object(s,'close'),patch('requests.post') as post:
                 self.assertEqual(client.get('/api/v3/models').status_code,403)
                 self.assertEqual(client.post('/api/v3/settings/provider',json=profile('ollama')).status_code,403)
-                actor['role']='operator';self.assertEqual(client.get('/api/v3/models').status_code,200)
+                actor['role']='operator';catalog=client.get('/api/v3/models')
+                self.assertEqual(catalog.status_code,200)
+                self.assertIn('model_gate',catalog.json());self.assertIn('model_options',catalog.json())
+                self.assertIn('active_run',catalog.json());self.assertIn('model',catalog.json())
                 self.assertEqual(client.post('/api/v3/settings/provider',json=profile('ollama')).status_code,200)
                 self.assertIsNone(s.model_setting());post.assert_not_called()
                 self.assertEqual(client.post('/api/v3/settings/provider',json={'api_key':'private-key'}).status_code,400)
